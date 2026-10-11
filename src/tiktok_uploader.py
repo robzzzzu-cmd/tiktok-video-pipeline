@@ -399,10 +399,19 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     except Exception:
                         pass
 
+            # Dismiss any accidental exit dialog if already showing
+            for scope in search_scopes:
+                try:
+                    cancel_btn = scope.query_selector('div[role="dialog"] button:has-text("Cancel")')
+                    if cancel_btn:
+                        cancel_btn.click(timeout=1500, force=True)
+                except Exception:
+                    pass
+
             # Locate caption editor container (supports DraftEditor, contenteditable, textarea)
             caption_selector = (
-                'div[contenteditable="true"], div.DraftEditor-root, div.notranslate[contenteditable="true"], '
-                'textarea[placeholder*="caption"], div[data-placeholder]'
+                'div[contenteditable="true"], div.DraftEditor-editorContainer div[contenteditable="true"], '
+                'div.notranslate[contenteditable="true"], textarea[placeholder*="caption"], textarea'
             )
             caption_el = None
             for scope in search_scopes:
@@ -413,28 +422,40 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 except Exception:
                     pass
 
+            clean_title = title.strip()
+            if len(clean_title) > 100:
+                clean_title = clean_title[:97] + "..."
+            tags_str = " ".join(config.hashtags)
+
             if caption_el:
                 logger.info("Entering caption and viral hashtags into description editor...")
                 try:
                     caption_el.click(timeout=4000, force=True)
+                    page.wait_for_timeout(300)
                     page.keyboard.press("Control+A")
                     page.keyboard.press("Backspace")
-                    page.wait_for_timeout(300)
-                    caption_el.fill(caption)
+                    page.wait_for_timeout(200)
+                    page.keyboard.type(clean_title, delay=10)
+                    page.keyboard.press("Enter")
+                    page.keyboard.press("Enter")
+                    page.wait_for_timeout(100)
+                    page.keyboard.type(tags_str, delay=10)
+                    page.wait_for_timeout(500)
                 except Exception as e_fill:
-                    logger.info("Standard fill notice (%s); attempting evaluate text dispatch...", e_fill)
+                    logger.warning("Keyboard typing notice (%s); attempting evaluate text dispatch...", e_fill)
                     try:
                         active_scope = upload_frame or page
+                        full_caption = f"{clean_title}\n\n{tags_str}"
                         active_scope.evaluate(
                             """(text) => {
-                                const el = document.querySelector('div[contenteditable="true"], div.DraftEditor-root, textarea[placeholder*="caption"]');
+                                const el = document.querySelector('div[contenteditable="true"], textarea');
                                 if (el) {
                                     el.focus();
                                     document.execCommand('selectAll', false, null);
                                     document.execCommand('insertText', false, text);
                                 }
                             }""",
-                            caption,
+                            full_caption,
                         )
                     except Exception as e_ev:
                         logger.warning("Could not set caption via evaluate: %s", e_ev)
@@ -443,51 +464,131 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
             page.screenshot(path=str(screenshot_dir / "03_caption_entered.png"))
 
-            # Wait for Post button to become enabled (wait up to 90s for video transcoding)
-            logger.info("Waiting for video upload to finalize and Post button to become enabled...")
-            post_button = None
-            for attempt in range(30):
-                for target in search_scopes:
+            # Scroll down to reveal bottom footer action bar (Post button)
+            logger.info("Scrolling down to reveal footer action buttons...")
+            for s in search_scopes:
+                try:
+                    s.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    s.evaluate("""() => {
+                        const els = document.querySelectorAll('div, main, section');
+                        for (const el of els) {
+                            if (el.scrollHeight > el.clientHeight && el.clientHeight > 200) {
+                                el.scrollTop = el.scrollHeight;
+                            }
+                        }
+                    }""")
+                except Exception:
+                    pass
+            page.wait_for_timeout(1500)
+
+            # Helper to find authentic Post button (excludes sidebar nav)
+            def find_real_post_button(scopes):
+                # Dismiss accidental exit dialog if showing
+                for s in scopes:
                     try:
-                        btn = (
-                            target.query_selector('button:has-text("Post")')
-                            or target.query_selector('button[data-e2e="post_video_button"]')
-                            or target.query_selector('div.btn-post button')
-                            or target.query_selector('button.btn-post')
-                        )
-                        if btn:
-                            is_disabled = (
-                                btn.get_attribute("disabled") is not None
-                                or btn.get_attribute("aria-disabled") == "true"
-                                or "disabled" in (btn.get_attribute("class") or "").lower()
-                            )
-                            if not is_disabled:
-                                post_button = btn
-                                break
+                        cancel_exit = s.query_selector('div[role="dialog"] button:has-text("Cancel")')
+                        if cancel_exit:
+                            logger.info("Dismissing accidental exit confirmation dialog...")
+                            cancel_exit.click(timeout=1500, force=True)
+                            page.wait_for_timeout(500)
                     except Exception:
                         pass
+
+                post_selectors = [
+                    'button[data-e2e="post_video_button"]',
+                    'div[class*="btn-post"] button',
+                    'button[class*="btn-post"]',
+                    'div[class*="button-group"] button',
+                    'div[class*="btn-group"] button',
+                    'div[class*="footer"] button',
+                    'div[class*="action"] button',
+                    'button:text-is("Post")',
+                    'button',
+                ]
+                for s in scopes:
+                    for sel in post_selectors:
+                        try:
+                            candidates = s.query_selector_all(sel)
+                            for btn in candidates:
+                                text = (btn.inner_text() or "").strip()
+                                if text.upper() != "POST":
+                                    continue
+                                box = btn.bounding_box()
+                                if not box:
+                                    continue
+                                # Exclude left navigation sidebar (x is 0..100px)
+                                if box["x"] < 120:
+                                    continue
+                                # Must not be disabled
+                                is_disabled = (
+                                    btn.get_attribute("disabled") is not None
+                                    or btn.get_attribute("aria-disabled") == "true"
+                                    or "disabled" in (btn.get_attribute("class") or "").lower()
+                                )
+                                if not is_disabled:
+                                    logger.info(
+                                        "Found authentic Post button: selector='%s', text='%s', box=%s",
+                                        sel,
+                                        text,
+                                        box,
+                                    )
+                                    return btn
+                        except Exception:
+                            pass
+                return None
+
+            # Wait for Post button to become enabled (wait up to 90s for video transcoding)
+            logger.info("Waiting for video upload to finalize and authentic Post button to become enabled...")
+            post_button = None
+            for attempt in range(30):
+                post_button = find_real_post_button(search_scopes)
                 if post_button:
                     break
+                # Periodically re-scroll in case dynamic content shifted
+                if attempt % 3 == 0:
+                    for s in search_scopes:
+                        try:
+                            s.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        except Exception:
+                            pass
                 time.sleep(3)
 
             if post_button:
-                logger.info("Post button is enabled! Clicking Post...")
+                logger.info("Authentic Post button is enabled! Clicking Post...")
                 try:
+                    post_button.scroll_into_view_if_needed()
+                    page.wait_for_timeout(500)
                     post_button.click(timeout=8000, force=True)
                 except Exception:
                     post_button.click(force=True)
-                page.wait_for_timeout(10000)
+
+                page.wait_for_timeout(8000)
                 page.screenshot(path=str(screenshot_dir / "04_after_post.png"))
+
+                # Check if exit dialog popped up; if so, dismiss and retry post
+                for s in search_scopes:
+                    try:
+                        cancel_exit = s.query_selector('div[role="dialog"] button:has-text("Cancel")')
+                        if cancel_exit:
+                            logger.warning("Exit dialog appeared; dismissing Cancel and re-clicking Post button...")
+                            cancel_exit.click(timeout=1500, force=True)
+                            page.wait_for_timeout(1000)
+                            retry_btn = find_real_post_button(search_scopes)
+                            if retry_btn:
+                                retry_btn.scroll_into_view_if_needed()
+                                retry_btn.click(force=True)
+                                page.wait_for_timeout(6000)
+                    except Exception:
+                        pass
 
                 # Check for post-upload modals or confirm dialogs
                 for target in search_scopes:
-                    for confirm_label in ["Manage your posts", "View video", "Confirm", "Post anyway"]:
+                    for confirm_label in ["Manage your posts", "Upload another video", "View video", "Post anyway"]:
                         try:
                             confirm_el = target.query_selector(f'button:has-text("{confirm_label}")')
                             if confirm_el:
-                                logger.info("Clicked confirmation dialog: '%s'", confirm_label)
-                                confirm_el.click(timeout=3000, force=True)
-                                page.wait_for_timeout(3000)
+                                logger.info("Detected post-upload dialog button: '%s'", confirm_label)
+                                page.wait_for_timeout(1000)
                         except Exception:
                             pass
 
