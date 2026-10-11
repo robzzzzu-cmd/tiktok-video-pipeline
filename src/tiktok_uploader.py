@@ -162,10 +162,87 @@ def upload_via_tiktok_api(video_path: Path, title: str) -> bool:
 # Method B: Playwright Headless Browser Automation (Fallback)
 # -----------------------------------------------------------------------------
 
+def parse_cookie_data(cookie_input: str) -> list[dict]:
+    """Parses cookie data from JSON array, Netscape format, or cookie header string."""
+    if not cookie_input:
+        return []
+
+    cookie_input = cookie_input.strip()
+
+    # 1. Try JSON format (e.g. from Cookie-Editor 'Export as JSON')
+    try:
+        data = json.loads(cookie_input)
+        if isinstance(data, list):
+            cleaned = []
+            for c in data:
+                if isinstance(c, dict) and "name" in c and "value" in c:
+                    cookie_dict = {
+                        "name": str(c["name"]).strip(),
+                        "value": str(c["value"]).strip(),
+                        "domain": str(c.get("domain", ".tiktok.com")),
+                        "path": str(c.get("path", "/")),
+                    }
+                    if "secure" in c:
+                        cookie_dict["secure"] = bool(c["secure"])
+                    if "httpOnly" in c:
+                        cookie_dict["httpOnly"] = bool(c["httpOnly"])
+                    cleaned.append(cookie_dict)
+            if cleaned:
+                logger.info("Successfully parsed %d cookies from JSON format.", len(cleaned))
+                return cleaned
+    except Exception:
+        pass
+
+    # 2. Try Netscape format (tab-separated lines from cookies.txt)
+    netscape_cookies = []
+    lines = cookie_input.splitlines()
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 7:
+            netscape_cookies.append({
+                "domain": parts[0],
+                "httpOnly": parts[1].upper() == "TRUE",
+                "path": parts[2],
+                "secure": parts[3].upper() == "TRUE",
+                "name": parts[5],
+                "value": parts[6],
+            })
+    if netscape_cookies:
+        logger.info("Successfully parsed %d cookies from Netscape cookies.txt format.", len(netscape_cookies))
+        return netscape_cookies
+
+    # 3. Try Header String format: 'name=value; name2=value2'
+    header_cookies = []
+    pairs = cookie_input.split(";")
+    for pair in pairs:
+        if "=" in pair:
+            k, v = pair.split("=", 1)
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if k and v:
+                header_cookies.append({
+                    "name": k,
+                    "value": v,
+                    "domain": ".tiktok.com",
+                    "path": "/",
+                })
+    if header_cookies:
+        logger.info("Successfully parsed %d cookies from header string format.", len(header_cookies))
+        return header_cookies
+
+    return []
+
+
 def upload_via_playwright(video_path: Path, title: str) -> bool:
-    """Uploads video using Playwright headless browser with session cookies."""
-    if not config.tiktok_session_id:
-        logger.info("No TIKTOK_SESSION_ID provided; skipping Playwright upload.")
+    """Uploads video using Playwright headless browser with session cookies or full cookie export."""
+    has_session = bool(config.tiktok_session_id and config.tiktok_session_id.strip())
+    has_cookies = bool(config.tiktok_cookies and config.tiktok_cookies.strip())
+
+    if not (has_session or has_cookies):
+        logger.info("No TIKTOK_SESSION_ID or TIKTOK_COOKIES provided; skipping Playwright upload.")
         return False
 
     try:
@@ -175,11 +252,23 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
         return False
 
     caption = build_caption(title)
-    session_id = config.tiktok_session_id.strip()
-
-    logger.info("Starting headless Playwright upload with TikTok session cookie...")
     screenshot_dir = config.temp_dir / "playwright_debug"
     screenshot_dir.mkdir(parents=True, exist_ok=True)
+
+    # Prepare cookies list
+    cookies_to_inject = []
+    if has_cookies:
+        cookies_to_inject = parse_cookie_data(config.tiktok_cookies or "")
+
+    if not cookies_to_inject and has_session:
+        session_id = (config.tiktok_session_id or "").strip()
+        cookies_to_inject = [
+            {"name": "sessionid", "value": session_id, "domain": ".tiktok.com", "path": "/", "httpOnly": True, "secure": True},
+            {"name": "sessionid_ss", "value": session_id, "domain": ".tiktok.com", "path": "/", "httpOnly": True, "secure": True},
+            {"name": "sid_tt", "value": session_id, "domain": ".tiktok.com", "path": "/", "httpOnly": True, "secure": True},
+        ]
+
+    logger.info("Starting headless Playwright upload with %d authenticated cookies...", len(cookies_to_inject))
 
     try:
         with sync_playwright() as p:
@@ -203,47 +292,50 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             # Remove navigator.webdriver flag
             context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
-            # Set TikTok authentication cookies
-            context.add_cookies([
-                {
-                    "name": "sessionid",
-                    "value": session_id,
-                    "domain": ".tiktok.com",
-                    "path": "/",
-                    "httpOnly": True,
-                    "secure": True,
-                },
-                {
-                    "name": "sessionid_ss",
-                    "value": session_id,
-                    "domain": ".tiktok.com",
-                    "path": "/",
-                    "httpOnly": True,
-                    "secure": True,
-                },
-                {
-                    "name": "sid_tt",
-                    "value": session_id,
-                    "domain": ".tiktok.com",
-                    "path": "/",
-                    "httpOnly": True,
-                    "secure": True,
-                },
-            ])
+            # Set cookies into context
+            if cookies_to_inject:
+                context.add_cookies(cookies_to_inject)
 
             page = context.new_page()
-            upload_url = "https://www.tiktok.com/tiktokstudio/upload"
-            logger.info("Navigating to %s...", upload_url)
+
+            # First navigate to homepage to establish session tokens
             try:
-                page.goto(upload_url, wait_until="networkidle", timeout=50000)
-            except Exception as nav_e:
-                logger.info("Page navigation completed with status: %s", nav_e)
+                logger.info("Establishing initial TikTok session...")
+                page.goto("https://www.tiktok.com/", wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(2000)
+            except Exception as e_home:
+                logger.info("Homepage handshake note: %s", e_home)
 
-            page.screenshot(path=str(screenshot_dir / "01_page_loaded.png"))
+            # Re-ensure cookies are set
+            if cookies_to_inject:
+                try:
+                    context.add_cookies(cookies_to_inject)
+                except Exception:
+                    pass
 
-            # Check if redirected to login
-            if "login" in page.url.lower():
-                logger.error("Session cookie appears expired or invalid; redirected to login: %s", page.url)
+            # Try upload portals
+            upload_urls = [
+                "https://www.tiktok.com/tiktokstudio/upload",
+                "https://www.tiktok.com/upload",
+                "https://www.tiktok.com/creator-center/upload",
+            ]
+            upload_loaded = False
+            for target_url in upload_urls:
+                logger.info("Navigating to upload portal: %s...", target_url)
+                try:
+                    page.goto(target_url, wait_until="networkidle", timeout=40000)
+                except Exception:
+                    pass
+
+                page.screenshot(path=str(screenshot_dir / "01_page_loaded.png"))
+
+                if "login" not in page.url.lower():
+                    upload_loaded = True
+                    break
+                logger.warning("Portal %s bounced to login; trying alternative...", target_url)
+
+            if not upload_loaded or "login" in page.url.lower():
+                logger.error("Session cookies rejected by TikTok; redirected to login: %s", page.url)
                 page.screenshot(path=str(screenshot_dir / "01_login_redirect.png"))
                 browser.close()
                 return False
@@ -398,7 +490,7 @@ def publish_to_tiktok(video_path: Path, title: str, dry_run: bool = False) -> Di
         logger.warning("Method A failed; falling back to Method B (Playwright)...")
 
     # 2. Try Playwright Session Automation (Method B)
-    if config.tiktok_session_id:
+    if config.tiktok_session_id or config.tiktok_cookies:
         logger.info("Attempting TikTok Playwright Browser Automation (Method B)...")
         if upload_via_playwright(video_path, title):
             return {
@@ -413,5 +505,5 @@ def publish_to_tiktok(video_path: Path, title: str, dry_run: bool = False) -> Di
         "status": "skipped_or_unauthenticated",
         "method": "none",
         "video_path": str(video_path),
-        "note": "Configure TIKTOK_ACCESS_TOKEN or TIKTOK_SESSION_ID in secrets to enable auto-posting.",
+        "note": "Configure TIKTOK_ACCESS_TOKEN, TIKTOK_COOKIES, or TIKTOK_SESSION_ID in secrets to enable auto-posting.",
     }

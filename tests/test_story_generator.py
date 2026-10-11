@@ -107,3 +107,20 @@ def test_build_caption():
     assert "#viral" in caption
     assert "#asmr" in caption
     assert "#restockasmrcompilation" in caption
+
+
+def test_parse_cookie_data():
+    from src.tiktok_uploader import parse_cookie_data
+    # JSON array
+    json_cookies = '[{"name": "sessionid", "value": "123456", "domain": ".tiktok.com"}]'
+    res = parse_cookie_data(json_cookies)
+    assert len(res) == 1
+    assert res[0]["name"] == "sessionid"
+    assert res[0]["value"] == "123456"
+
+    # Header string
+    header_cookies = "sessionid=abc1234; ttwid=xyz5678"
+    res_hdr = parse_cookie_data(header_cookies)
+    assert len(res_hdr) == 2
+    assert res_hdr[0]["name"] == "sessionid"
+    assert res_hdr[1]["name"] == "ttwid"

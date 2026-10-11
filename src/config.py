@@ -55,6 +55,9 @@ class PipelineConfig(BaseModel):
     tiktok_session_id: Optional[str] = Field(
         default_factory=lambda: os.getenv("TIKTOK_SESSION_ID")
     )
+    tiktok_cookies: Optional[str] = Field(
+        default_factory=lambda: os.getenv("TIKTOK_COOKIES")
+    )
 
     # YouTube Background Video
     background_video_url: str = Field(

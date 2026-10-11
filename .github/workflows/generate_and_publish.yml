@@ -97,6 +97,7 @@ jobs:
           TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
           TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID }}
+          TIKTOK_COOKIES: ${{ secrets.TIKTOK_COOKIES }}
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
           BACKGROUND_VIDEO_FALLBACK_URL: ${{ secrets.BACKGROUND_VIDEO_FALLBACK_URL }}
           BACKGROUND_MUSIC_URL: ${{ secrets.BACKGROUND_MUSIC_URL || 'https://www.tiktok.com/music/son-original-7306937893019274016' }}
