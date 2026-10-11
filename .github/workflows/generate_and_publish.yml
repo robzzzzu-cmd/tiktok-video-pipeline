@@ -97,7 +97,7 @@ jobs:
           TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID }}
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
           BACKGROUND_VIDEO_FALLBACK_URL: ${{ secrets.BACKGROUND_VIDEO_FALLBACK_URL }}
-          BACKGROUND_MUSIC_URL: ${{ secrets.BACKGROUND_MUSIC_URL }}
+          BACKGROUND_MUSIC_URL: ${{ secrets.BACKGROUND_MUSIC_URL || 'https://www.tiktok.com/music/son-original-7306937893019274016' }}
         run: |
           # Build command flags
           SOURCE="${{ inputs.source || 'auto' }}"

@@ -72,13 +72,14 @@ class PipelineConfig(BaseModel):
         default_factory=lambda: os.getenv("BACKGROUND_VIDEO_FALLBACK_URL")
     )
     background_music_url: str = Field(
-        default_factory=lambda: os.getenv(
-            "BACKGROUND_MUSIC_URL",
-            "https://www.tiktok.com/music/son-original-7306937893019274016",
+        default_factory=lambda: (
+            os.getenv("BACKGROUND_MUSIC_URL")
+            if os.getenv("BACKGROUND_MUSIC_URL") and os.getenv("BACKGROUND_MUSIC_URL").strip()
+            else "https://www.tiktok.com/music/son-original-7306937893019274016"
         )
     )
     bg_music_volume_db: str = Field(
-        default_factory=lambda: os.getenv("BG_MUSIC_VOLUME_DB", "-26dB")
+        default_factory=lambda: os.getenv("BG_MUSIC_VOLUME_DB") or "-26dB"
     )
 
     # Story & Voice Settings

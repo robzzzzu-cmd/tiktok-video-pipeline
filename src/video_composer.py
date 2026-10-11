@@ -408,6 +408,9 @@ def download_background_music(
     if output_path.exists() and output_path.stat().st_size > 10240:
         return output_path
 
+    if not music_url or not str(music_url).strip():
+        music_url = config.background_music_url or "https://www.tiktok.com/music/son-original-7306937893019274016"
+
     # Check if bundled music asset exists
     bundled_music = config.project_root / "assets" / "background_music.mp3"
     if bundled_music.exists() and bundled_music.stat().st_size > 10240:
