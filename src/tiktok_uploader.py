@@ -440,6 +440,8 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     page.keyboard.press("Enter")
                     page.wait_for_timeout(100)
                     page.keyboard.type(tags_str, delay=10)
+                    page.wait_for_timeout(300)
+                    page.keyboard.press("Escape")
                     page.wait_for_timeout(500)
                 except Exception as e_fill:
                     logger.warning("Keyboard typing notice (%s); attempting evaluate text dispatch...", e_fill)
@@ -495,6 +497,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                         pass
 
                 post_selectors = [
+                    'button:text-is("Post")',
                     'button[data-e2e="post_video_button"]',
                     'div[class*="btn-post"] button',
                     'button[class*="btn-post"]',
@@ -502,7 +505,6 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     'div[class*="btn-group"] button',
                     'div[class*="footer"] button',
                     'div[class*="action"] button',
-                    'button:text-is("Post")',
                     'button',
                 ]
                 for s in scopes:
@@ -516,8 +518,8 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                                 box = btn.bounding_box()
                                 if not box:
                                     continue
-                                # Exclude left navigation sidebar (x is 0..100px)
-                                if box["x"] < 120:
+                                # Exclude left navigation sidebar (sidebar width is ~60px, x <= 65px)
+                                if box["x"] < 65:
                                     continue
                                 # Must not be disabled
                                 is_disabled = (
@@ -525,13 +527,14 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                                     or btn.get_attribute("aria-disabled") == "true"
                                     or "disabled" in (btn.get_attribute("class") or "").lower()
                                 )
+                                logger.info(
+                                    "Candidate Post button found: selector='%s', text='%s', box=%s, disabled=%s",
+                                    sel,
+                                    text,
+                                    box,
+                                    is_disabled,
+                                )
                                 if not is_disabled:
-                                    logger.info(
-                                        "Found authentic Post button: selector='%s', text='%s', box=%s",
-                                        sel,
-                                        text,
-                                        box,
-                                    )
                                     return btn
                         except Exception:
                             pass
