@@ -568,29 +568,57 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 page.wait_for_timeout(8000)
                 page.screenshot(path=str(screenshot_dir / "04_after_post.png"))
 
-                # Check if exit dialog popped up; if so, dismiss and retry post
+                # Handle post-click dialogs:
+                # 1. TikTok "Continue to post?" modal (appears when Content Check Lite is in progress)
+                # It has [Cancel] and a red [Post now] button. We MUST click [Post now]!
                 for s in search_scopes:
                     try:
-                        cancel_exit = s.query_selector('div[role="dialog"] button:has-text("Cancel")')
-                        if cancel_exit:
-                            logger.warning("Exit dialog appeared; dismissing Cancel and re-clicking Post button...")
-                            cancel_exit.click(timeout=1500, force=True)
-                            page.wait_for_timeout(1000)
-                            retry_btn = find_real_post_button(search_scopes)
-                            if retry_btn:
-                                retry_btn.scroll_into_view_if_needed()
-                                retry_btn.click(force=True)
-                                page.wait_for_timeout(6000)
+                        for post_confirm in ["Post now", "Post anyway", "Continue to post"]:
+                            confirm_btn = s.query_selector(f'div[role="dialog"] button:has-text("{post_confirm}")') or s.query_selector(f'button:has-text("{post_confirm}")')
+                            if confirm_btn:
+                                logger.info("Detected post confirmation modal button: '%s'! Clicking to confirm publication...", post_confirm)
+                                confirm_btn.click(timeout=5000, force=True)
+                                page.wait_for_timeout(5000)
+                                break
+                    except Exception as e_conf:
+                        logger.debug("Confirm dialog check error: %s", e_conf)
+
+                page.wait_for_timeout(5000)
+                page.screenshot(path=str(screenshot_dir / "04_after_post.png"))
+
+                # 2. Only if an actual EXIT/DISCARD warning dialog appeared, cancel it and retry
+                for s in search_scopes:
+                    try:
+                        dialog = s.query_selector('div[role="dialog"]')
+                        if dialog:
+                            dialog_text = (dialog.inner_text() or "").lower()
+                            if "exit" in dialog_text or "not be saved" in dialog_text:
+                                cancel_exit = dialog.query_selector('button:has-text("Cancel")')
+                                if cancel_exit:
+                                    logger.warning("Exit dialog appeared; dismissing Cancel and re-clicking Post button...")
+                                    cancel_exit.click(timeout=1500, force=True)
+                                    page.wait_for_timeout(1000)
+                                    retry_btn = find_real_post_button(search_scopes)
+                                    if retry_btn:
+                                        retry_btn.scroll_into_view_if_needed()
+                                        retry_btn.click(force=True)
+                                        page.wait_for_timeout(6000)
+                            elif "continue to post" in dialog_text or "post now" in dialog_text:
+                                post_now = dialog.query_selector('button:has-text("Post now")')
+                                if post_now:
+                                    logger.info("Found 'Post now' button inside dialog; clicking...")
+                                    post_now.click(timeout=5000, force=True)
+                                    page.wait_for_timeout(5000)
                     except Exception:
                         pass
 
-                # Check for post-upload modals or confirm dialogs
+                # 3. Check for final post-upload success dialogs or confirmation banners
                 for target in search_scopes:
-                    for confirm_label in ["Manage your posts", "Upload another video", "View video", "Post anyway"]:
+                    for success_label in ["Manage your posts", "Upload another video", "View video", "Uploaded"]:
                         try:
-                            confirm_el = target.query_selector(f'button:has-text("{confirm_label}")')
-                            if confirm_el:
-                                logger.info("Detected post-upload dialog button: '%s'", confirm_label)
+                            success_el = target.query_selector(f'button:has-text("{success_label}")') or target.query_selector(f'text="{success_label}"')
+                            if success_el:
+                                logger.info("Detected post-upload success element: '%s'", success_label)
                                 page.wait_for_timeout(1000)
                         except Exception:
                             pass
