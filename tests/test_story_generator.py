@@ -83,7 +83,7 @@ def test_clean_story_title():
     assert "Would I be the asshole if" in clean_story_title("WIBTA if I told my parents the truth?", category="aitah")
     # Cleanly strips AITA prefixes for non-AITAH categories (love, inheritance, entitled)
     assert "Walking out" in clean_story_title("AITA for walking out of my sister's wedding?", category="love")
-    assert "Sister sold" in clean_story_title("AITA for my sister sold our house?", category="inheritance")
+    assert "My sister sold" in clean_story_title("AITA for my sister sold our house?", category="inheritance")
 
 
 def test_fetch_from_huggingface_reddit():
