@@ -84,7 +84,7 @@ def test_clean_story_title():
     # Cleanly strips AITA prefixes for non-AITAH categories (love, inheritance, entitled, revenge, confession)
     assert "Walking out" in clean_story_title("AITA for walking out of my sister's wedding?", category="love")
     assert "My sister sold" in clean_story_title("AITA for my sister sold our house?", category="inheritance")
-    assert "My boss tried" in clean_story_title("AITA for reporting my boss?", category="revenge")
+    assert "Reporting my boss" in clean_story_title("AITA for reporting my boss?", category="revenge")
     assert "Finding out my DNA" in clean_story_title("AITA for finding out my DNA?", category="confession")
 
 

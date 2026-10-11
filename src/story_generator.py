@@ -81,11 +81,11 @@ def clean_text_for_narration(text: str, category: str = "auto") -> str:
 
     # Expand common Reddit acronyms
     for pattern, replacement in ACRONYM_MAP.items():
-        if category != "aitah" and pattern in (r"\bAITA\b", r"\bWIBTA\b"):
+        if category in ("love", "inheritance", "entitled", "revenge", "confession") and pattern in (r"\bAITA\b", r"\bWIBTA\b"):
             text = re.sub(pattern, "in the wrong", text, flags=re.IGNORECASE)
-        elif category != "aitah" and pattern == r"\bNTA\b":
+        elif category in ("love", "inheritance", "entitled", "revenge", "confession") and pattern == r"\bNTA\b":
             text = re.sub(pattern, "in the right", text, flags=re.IGNORECASE)
-        elif category != "aitah" and pattern in (r"\bYTA\b", r"\bESH\b"):
+        elif category in ("love", "inheritance", "entitled", "revenge", "confession") and pattern in (r"\bYTA\b", r"\bESH\b"):
             text = re.sub(pattern, "in the wrong", text, flags=re.IGNORECASE)
         else:
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
@@ -98,7 +98,7 @@ def clean_text_for_narration(text: str, category: str = "auto") -> str:
         flags=re.IGNORECASE,
     )
 
-    if category != "aitah":
+    if category in ("love", "inheritance", "entitled", "revenge", "confession"):
         # Remove any lingering "Am I the asshole" phrases anywhere in the narrative
         text = re.sub(r"\b(?:Am I the asshole|would I be the asshole)\b\??", "am I in the wrong", text, flags=re.IGNORECASE)
         text = re.sub(r"\b(?:an asshole|the asshole)\b", "in the wrong", text, flags=re.IGNORECASE)

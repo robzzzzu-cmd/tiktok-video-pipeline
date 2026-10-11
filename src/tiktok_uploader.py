@@ -21,8 +21,8 @@ def build_caption(title: str, hashtags: Optional[list] = None) -> str:
     tags = hashtags or config.hashtags
     tags_str = " ".join(tags)
     clean_title = title.strip()
-    if len(clean_title) > 150:
-        clean_title = clean_title[:147] + "..."
+    if len(clean_title) > 100:
+        clean_title = clean_title[:97] + "..."
     return f"{clean_title}\n\n{tags_str}"
 
 
