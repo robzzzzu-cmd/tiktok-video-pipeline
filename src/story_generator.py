@@ -98,25 +98,29 @@ def detect_narrator_gender(text: str, title: str = "") -> str:
     """
     combined = f"{title} {text[:800]}"
 
-    # 1. Exact age/gender pattern: e.g. [24M], (28F), 22M, 30F
-    # Match patterns like I (24M), I am a 24F, Me [25F]
-    explicit_female = re.search(
-        r"(?:(?:I|me|my)\s*(?:am|\'m)?\s*(?:a\s+)?)?[\[\(]?\b(?:\d{2})\s*([Ff])\b[\]\)]?",
+    # 1. Narrator explicit first-person tag: e.g. "I (24F)", "Me [22f]", "myself [25F]", "I am a 24F"
+    first_person_match = re.search(
+        r"\b(?:I|me|myself)\s*(?:am|\'m)?\s*(?:a\s+)?[\[\(]?\s*(?:\d{2})\s*([MFmf])\s*[\]\)]?",
         combined,
+        re.I,
     )
-    explicit_male = re.search(
-        r"(?:(?:I|me|my)\s*(?:am|\'m)?\s*(?:a\s+)?)?[\[\(]?\b(?:\d{2})\s*([Mm])\b[\]\)]?",
-        combined,
-    )
+    if first_person_match:
+        gender_code = first_person_match.group(1).upper()
+        chosen = "female" if gender_code == "F" else "male"
+        logger.info("Detected %s narrator from direct first-person tag.", chosen)
+        return chosen
 
-    if explicit_female and not explicit_male:
-        logger.info("Detected female narrator from explicit age/gender tag.")
+    # 2. General isolated age/gender pattern if only one exists
+    all_f = re.findall(r"[\[\(]\s*(?:\d{2})\s*[Ff]\s*[\]\)]", combined)
+    all_m = re.findall(r"[\[\(]\s*(?:\d{2})\s*[Mm]\s*[\]\)]", combined)
+    if all_f and not all_m:
+        logger.info("Detected female narrator from solitary age/gender tag.")
         return "female"
-    if explicit_male and not explicit_female:
-        logger.info("Detected male narrator from explicit age/gender tag.")
+    if all_m and not all_f:
+        logger.info("Detected male narrator from solitary age/gender tag.")
         return "male"
 
-    # 2. Phrasal declarations: 'I am a woman', 'I'm a 26 year old girl', 'as a guy'
+    # 3. Phrasal declarations: 'I am a woman', 'I'm a 26 year old girl', 'as a guy'
     if re.search(r"\b(?:I\s+am|I\'m)\s+a\s+(?:woman|girl|female|mother|mom|wife)\b", combined, re.I):
         logger.info("Detected female narrator from declaration phrase.")
         return "female"
@@ -124,7 +128,7 @@ def detect_narrator_gender(text: str, title: str = "") -> str:
         logger.info("Detected male narrator from declaration phrase.")
         return "male"
 
-    # 3. Contextual relationship markers
+    # 4. Contextual relationship markers
     # 'My husband / boyfriend' (majority female narrator in relationship advice subreddits)
     if re.search(r"\bmy\s+(?:husband|fiancé|boyfriend)\b", combined, re.I) and not re.search(r"\bmy\s+(?:wife|fiancée|girlfriend)\b", combined, re.I):
         logger.info("Inferred female narrator from partner reference.")
@@ -133,7 +137,7 @@ def detect_narrator_gender(text: str, title: str = "") -> str:
         logger.info("Inferred male narrator from partner reference.")
         return "male"
 
-    # 4. Ambiguous: randomly select
+    # 5. Ambiguous: randomly select
     chosen = random.choice(["male", "female"])
     logger.info("Narrator gender ambiguous; randomly selected: %s", chosen)
     return chosen

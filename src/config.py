@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from dotenv import load_dotenv
 
 # Load .env if present
@@ -120,8 +120,7 @@ class PipelineConfig(BaseModel):
         ]
     )
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 # Global default configuration instance
