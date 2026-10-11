@@ -396,32 +396,35 @@ def generate_procedural_background(duration: float, output_path: Path) -> Path:
 
 
 def download_background_music(
-    music_url: str,
-    output_path: Path,
+    music_url: Optional[str] = None,
+    output_path: Optional[Path] = None,
     max_retries: int = 2,
 ) -> Path:
-    """Downloads quiet background music from TikTok / web URL or generates ambient music fallback.
+    """Provides quiet background music from bundled asset, custom web URL, or ambient generator.
 
     Ensures the pipeline always has a clean, quiet background music track.
     """
+    if output_path is None:
+        output_path = config.temp_dir / "background_music.mp3"
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_path.exists() and output_path.stat().st_size > 10240:
         return output_path
 
-    if not music_url or not str(music_url).strip():
-        music_url = config.background_music_url or "https://www.tiktok.com/music/son-original-7306937893019274016"
-
-    # Check if bundled music asset exists
+    # Check if bundled music asset exists FIRST (100% reliable, zero network dependency)
     bundled_music = config.project_root / "assets" / "background_music.mp3"
-    if bundled_music.exists() and bundled_music.stat().st_size > 10240:
-        shutil.copy2(bundled_music, output_path)
-        logger.info("Using bundled background music asset from %s", bundled_music)
-        return output_path
 
-    # Attempt download via yt-dlp
-    if shutil.which("yt-dlp"):
+    # If a custom non-default URL is passed, attempt downloading that custom track
+    is_custom_url = (
+        music_url
+        and str(music_url).strip()
+        and str(music_url).strip() != "https://www.tiktok.com/music/son-original-7306937893019274016"
+        and not str(music_url).strip().startswith("https://www.tiktok.com/music/")
+    )
+
+    if is_custom_url and shutil.which("yt-dlp"):
         for attempt in range(1, max_retries + 1):
-            logger.info("Downloading quiet background music from %s (attempt %d/%d)...", music_url, attempt, max_retries)
+            logger.info("Downloading custom background music from %s (attempt %d/%d)...", music_url, attempt, max_retries)
             cmd = [
                 "yt-dlp",
                 "-x",
@@ -431,16 +434,22 @@ def download_background_music(
                 "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "--socket-timeout", "15",
                 "-o", str(output_path),
-                music_url,
+                str(music_url),
             ]
             try:
                 res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
                 if res.returncode == 0 and output_path.exists() and output_path.stat().st_size > 10240:
-                    logger.info("Successfully downloaded background music: %s", output_path)
+                    logger.info("Successfully downloaded custom background music: %s", output_path)
                     return output_path
                 logger.warning("yt-dlp music download failed: %s", res.stderr[-200:] if res.stderr else "N/A")
             except Exception as e:
-                logger.warning("Error downloading background music: %s", e)
+                logger.warning("Error downloading custom background music: %s", e)
+
+    # Use bundled authentic TikTok piano music asset
+    if bundled_music.exists() and bundled_music.stat().st_size > 10240:
+        shutil.copy2(bundled_music, output_path)
+        logger.info("Using bundled authentic background music asset from %s (%d bytes)", bundled_music, bundled_music.stat().st_size)
+        return output_path
 
     # If download fails, generate soothing, quiet ambient background music using ffmpeg
     logger.info("Generating quiet ambient background music using ffmpeg synthesizer...")
@@ -526,10 +535,11 @@ def render_final_video(
 
     # Audio filter: duck quiet background music, mix with full voiceover
     # Note: background video sound [0:a] is completely removed/discarded!
+    # normalize=0 ensures voice stays at 100% full volume and music is mixed at exact target level
     audio_filter = (
         f"[2:a]volume={config.bg_music_volume_db}[bg_music];"
         f"[1:a]volume=1.0[voice];"
-        f"[voice][bg_music]amix=inputs=2:duration=first:dropout_transition=2[a]"
+        f"[voice][bg_music]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]"
     )
     filter_complex = f"{video_filter};{audio_filter}"
 

@@ -98,10 +98,11 @@ def clean_text_for_narration(text: str) -> str:
     return text.strip()
 
 
-def clean_story_title(title: str) -> str:
+def clean_story_title(title: str, category: str = "auto") -> str:
     """Cleans raw Reddit titles into natural viral story hooks for TikTok narration.
 
-    Preserves AITA prefixes (e.g. 'AITA for...') while removing clutter tags like [UPDATE].
+    Preserves AITA prefixes when category is 'aitah'.
+    Strips AITA prefixes when category is 'love', 'inheritance', or 'entitled'.
     """
     if not title:
         return ""
@@ -111,7 +112,14 @@ def clean_story_title(title: str) -> str:
     title = re.sub(r"^(?:UPDATE|Update):\s*", "", title)
     title = re.sub(r"^(?:Cross-posted|Crosspost|X-post)[:\-–]\s*", "", title, flags=re.IGNORECASE)
 
-    # Note: As requested, we DO NOT remove AITA / Am I the asshole from the start!
+    # If the story is explicitly in a non-AITAH category, strip any leading AITA tags
+    if category in ("love", "inheritance", "entitled"):
+        title = re.sub(
+            r"^(?:AITA|WIBTA|Am I the [aA]sshole|Would I be the [aA]sshole)\s+(?:for|if|to)?\s*",
+            "",
+            title,
+            flags=re.IGNORECASE,
+        )
 
     title = title.strip()
     if title:
@@ -525,179 +533,327 @@ def get_curated_fallback_story(
 
     story_database = {
         "love": {
-            "female": {
-                "title": "I found a second phone hidden in my fiancé's car three weeks before our wedding",
-                "body": (
-                    "I (26F) have been with my fiancé, Liam (29M), for four years. Our wedding was scheduled for next month, "
-                    "and we had already sent out invitations to two hundred guests. Last Thursday, Liam asked me to grab his gym bag "
-                    "from the trunk of his car. While digging around the spare tire compartment, my hand brushed against a small black "
-                    "velvet pouch. Inside was a fully charged burner phone with no passcode. When I opened the messages, my stomach dropped. "
-                    "There were hundreds of text messages spanning six months between Liam and my maid of honor, Sophie. "
-                    "They had been coordinating secret hotel meetups during his supposed late-night accounting shifts. "
-                    "Liam had even sent her pictures of the honeymoon resort in Bali we had booked, telling her he wished he was taking her instead. "
-                    "I took timestamped photos of every conversation, placed the phone back exactly as I found it, and walked inside. "
-                    "Instead of screaming immediately, I waited for our rehearsal dinner two nights later with both of our families present. "
-                    "When Liam stood up to give a toast thanking everyone, I tapped my champagne glass and asked to play a special slideshow. "
-                    "I projected screenshots of their messages onto the banquet screen, handed Liam his engagement ring, and turned to Sophie. "
-                    "I told everyone that since they were so passionate about our honeymoon, they could pay the vendor cancellation fees together. "
-                    "The room erupted into total chaos. Liam was sobbing, Sophie tried to flee to the parking lot, and my dad escorted me out. "
-                    "It broke my heart, but I dodged a lifetime of betrayal."
-                ),
-            },
-            "male": {
-                "title": "My girlfriend's parents demanded a fifty-thousand-dollar dowry, so I called off the proposal",
-                "body": (
-                    "I (28M) had been dating my girlfriend, Maya (27F), for three years. I bought a custom diamond ring and planned to propose "
-                    "during our anniversary dinner. Last weekend, Maya's parents invited me to their house for what they called a customary pre-engagement blessing. "
-                    "When I arrived, her father slid a notarized financial agreement across the mahogany table. "
-                    "He informed me that in order to receive their blessing to marry Maya, I had to pay a fifty-thousand-dollar cash dowry to her family "
-                    "and sign over fifty percent of the title on the house I purchased on my own before meeting her. "
-                    "When I looked at Maya in shock, expecting her to be outraged, she simply looked down at her manicured nails and said, "
-                    "'My parents raised me with high standards, and if you truly love me, you will prove your financial commitment to our family.' "
-                    "I realized in that exact second that this was an orchestrated shakedown. Maya had never loved me for who I was; she and her parents "
-                    "viewed me as an ATM. "
-                    "I took a deep breath, slid the contract back across the table, and said, 'Congratulations, you just saved me fifty thousand dollars.' "
-                    "I took the engagement ring out of my pocket, placed it back into my jacket, and walked out the front door. "
-                    "Maya has been spamming my phone with crying voice notes claiming it was just a traditional test and that she never meant it. "
-                    "Her parents sent angry emails threatening legal action for breach of promise. "
-                    "I returned the ring for a full refund, blocked their numbers, and never looked back."
-                ),
-            },
+            "female": [
+                {
+                    "title": "I found a second phone hidden in my fiancé's car three weeks before our wedding",
+                    "body": (
+                        "I (26F) have been with my fiancé, Liam (29M), for four years. Our wedding was scheduled for next month, "
+                        "and we had already sent out invitations to two hundred guests. Last Thursday, Liam asked me to grab his gym bag "
+                        "from the trunk of his car. While digging around the spare tire compartment, my hand brushed against a small black "
+                        "velvet pouch. Inside was a fully charged burner phone with no passcode. When I opened the messages, my stomach dropped. "
+                        "There were hundreds of text messages spanning six months between Liam and my maid of honor, Sophie. "
+                        "They had been coordinating secret hotel meetups during his supposed late-night accounting shifts. "
+                        "Liam had even sent her pictures of the honeymoon resort in Bali we had booked, telling her he wished he was taking her instead. "
+                        "I took timestamped photos of every conversation, placed the phone back exactly as I found it, and walked inside. "
+                        "Instead of screaming immediately, I waited for our rehearsal dinner two nights later with both of our families present. "
+                        "When Liam stood up to give a toast thanking everyone, I tapped my champagne glass and asked to play a special slideshow. "
+                        "I projected screenshots of their messages onto the banquet screen, handed Liam his engagement ring, and turned to Sophie. "
+                        "I told everyone that since they were so passionate about our honeymoon, they could pay the vendor cancellation fees together. "
+                        "The room erupted into total chaos. Liam was sobbing, Sophie tried to flee to the parking lot, and my dad escorted me out. "
+                        "It broke my heart, but I dodged a lifetime of betrayal."
+                    ),
+                },
+                {
+                    "title": "My husband of five years asked for an open marriage out of nowhere, so I hired a private investigator",
+                    "body": (
+                        "I (28F) had been married to my husband, Julian (30M), for five years. We owned a beautiful suburban home and talked about starting a family. "
+                        "Two months ago, over casual Sunday morning coffee, Julian dropped an absolute bombshell. He looked at me with a rehearsed, calm expression "
+                        "and suggested that we transition into an open marriage. He claimed that monogamy was outdated and that exploring other connections would "
+                        "bring us closer together emotionally. My heart sank into my stomach. When someone brings up an open marriage completely unprovoked after years "
+                        "of happy commitment, they almost certainly already have a specific person in mind. Instead of bursting into tears or screaming, I took a slow "
+                        "sip of coffee, smiled faintly, and said, 'If that is what you truly need to feel fulfilled, I am open to exploring ground rules.' "
+                        "His face lit up with arrogant relief. The very next morning, I visited a premier divorce attorney and retained a top-rated private investigator. "
+                        "Within seventy-two hours, the investigator delivered a digital dossier that knocked the wind out of me. Julian had already been having an affair "
+                        "for four months with his twenty-three-year-old marketing assistant, Chloe. He had leased a luxury downtown apartment under a corporate shell company "
+                        "and had been taking her on weekend trips using his expense account. He only asked for an open marriage so he could openly bring her around our "
+                        "circle of friends without feeling guilty. Equipped with bank statements, timestamped hotel photographs, and flight receipts, my attorney prepared "
+                        "airtight fault-based divorce filings under our state's infidelity laws. Next Friday, Julian came home whistling, packing an overnight duffle bag "
+                        "and cheerfully telling me he had a networking retreat scheduled for the weekend. As he reached for the front doorknob, I handed him a manila envelope. "
+                        "He smiled, assuming it was a sweet note. When he slid out the legal papers and the high-resolution photos of him and Chloe at the airport, all color "
+                        "drained from his face. His knees literally buckled against the entryway wall. I told him he had thirty minutes to take whatever fit into his duffle "
+                        "bag and leave our house. Under our prenuptial agreement, documented infidelity forfeited his share of our home equity. Julian sobbed on the porch, "
+                        "begging for marriage counseling and insisting Chloe meant nothing to him. I closed the door, locked the deadbolt, and changed the security codes. "
+                        "Three months later, our divorce was finalized. I kept the house, bought out his remaining pension share, and reclaimed my self-worth."
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "My girlfriend's parents demanded a fifty-thousand-dollar dowry, so I called off the proposal",
+                    "body": (
+                        "I (28M) had been dating my girlfriend, Maya (27F), for three years. I bought a custom diamond ring and planned to propose "
+                        "during our anniversary dinner. Last weekend, Maya's parents invited me to their house for what they called a customary pre-engagement blessing. "
+                        "When I arrived, her father slid a notarized financial agreement across the mahogany table. "
+                        "He informed me that in order to receive their blessing to marry Maya, I had to pay a fifty-thousand-dollar cash dowry to her family "
+                        "and sign over fifty percent of the title on the house I purchased on my own before meeting her. "
+                        "When I looked at Maya in shock, expecting her to be outraged, she simply looked down at her manicured nails and said, "
+                        "'My parents raised me with high standards, and if you truly love me, you will prove your financial commitment to our family.' "
+                        "I realized in that exact second that this was an orchestrated shakedown. Maya had never loved me for who I was; she and her parents "
+                        "viewed me as an ATM. "
+                        "I took a deep breath, slid the contract back across the table, and said, 'Congratulations, you just saved me fifty thousand dollars.' "
+                        "I took the engagement ring out of my pocket, placed it back into my jacket, and walked out the front door. "
+                        "Maya has been spamming my phone with crying voice notes claiming it was just a traditional test and that she never meant it. "
+                        "Her parents sent angry emails threatening legal action for breach of promise. "
+                        "I returned the ring for a full refund, blocked their numbers, and never looked back."
+                    ),
+                },
+                {
+                    "title": "My girlfriend told me she was on a quiet girls' retreat, but the hotel concierge called my phone by mistake",
+                    "body": (
+                        "I (28M) had been dating my girlfriend, Clara (27F), for nearly three years. We had just started browsing real estate listings together. "
+                        "Last month, Clara told me that she and three of her closest college girlfriends were taking a four-day girls' wellness retreat to Aspen, Colorado, "
+                        "to celebrate her friend's promotion. I drove her to the airport, paid for her round-trip tickets, and told her to enjoy a relaxing, uninterrupted weekend. "
+                        "On Saturday evening, while I was cooking dinner at home, my cell phone rang with a Colorado area code. The voice on the line was polite and professional: "
+                        "'Good evening Mr. Miller, this is the concierge at the St. Regis Aspen. We are preparing the private anniversary champagne and strawberry tasting "
+                        "you booked for Mrs. Miller in Suite 402, and we just needed to confirm your preferred dinner reservation time at the steakhouse.' I froze. "
+                        "I had not booked any suite, and Clara and I were not married. I calmly kept my voice steady and said, 'Could you remind me which credit card was put on "
+                        "file for that booking?' The concierge read out the last four digits of an American Express card that did not belong to me or Clara. "
+                        "I asked for the registered guest name, and the concierge replied, 'The reservation is under Mr. Bradley Vance and Clara Miller.' "
+                        "Bradley was Clara's wealthy ex-boyfriend who she insisted had been completely out of her life for two years. My hands began to shake with quiet rage. "
+                        "I thanked the concierge, confirmed the dinner reservation time for 8 PM, and hung up. Instead of blowing up Clara's phone while she was skiing, "
+                        "I called my brother. Together, we packed every single item Clara owned into cardboard boxes: her clothes, makeup, shoes, and vanity mirrors. "
+                        "We stacked all twenty boxes neatly in her parents' driveway with a note explaining she had moved out. When Clara landed back at the airport on Monday "
+                        "afternoon, she called me asking why I wasn't at the terminal to pick her up. I told her to ask Bradley for a ride, and mentioned that the St. Regis "
+                        "champagne looked lovely on her Instagram story. The dead silence on the line was deafening. She began stammering excuses, but I ended the call "
+                        "and blocked her on everything. It hurt like hell, but discovering the truth saved me from buying a house with someone who never valued my loyalty."
+                    ),
+                },
+            ],
         },
         "inheritance": {
-            "female": {
-                "title": "My parents secretly gave my late grandmother's house to my brother, so I called the county tax assessor",
-                "body": (
-                    "I (27F) was deeply close to my late grandmother, who passed away eighteen months ago. Before she passed, she repeatedly told our "
-                    "family that her historic lakeside cottage was to be split equally between me and my older brother, Jason (30M). "
-                    "My parents, who were appointed co-executors of the estate, assured me that probate was taking longer than expected due to legal backlogs. "
-                    "Last weekend, I drove past the lake house and was shocked to see moving vans and custom remodeling crews outside. "
-                    "Jason was standing on the porch, directing workers while drinking beer. When I confronted him, he grinned and said, "
-                    "'Mom and Dad transferred the deed entirely to my name last month as an early wedding gift. You can visit on holidays if you RSVP.' "
-                    "I immediately drove to the county courthouse and pulled the public property records. "
-                    "To my horror, my parents had filed fraudulent estate conveyance documents, declaring Jason as the sole surviving heir while omitting my name. "
-                    "Furthermore, to avoid paying estate transfer taxes, they had assessed the market value at fifty thousand dollars instead of its true "
-                    "market appraisal of six hundred and fifty thousand dollars. "
-                    "I didn't argue with my parents. Instead, I hired an estate litigation attorney and filed a formal audit request with the state revenue department. "
-                    "The county tax assessor launched an immediate fraud investigation, placed an injunction on the property deed, and hit my parents with "
-                    "seventy-five thousand dollars in tax penalties. Jason was forced to halt construction, and probate court has frozen all family accounts. "
-                    "My mother called me weeping, accusing me of tearing the family apart over money. "
-                    "I told her she was the one who stole from her own daughter."
-                ),
-            },
-            "male": {
-                "title": "My sister demanded my college trust fund after blowing her inheritance on luxury vacations",
-                "body": (
-                    "I (25M) was fortunate that our grandfather left me a fifty-thousand-dollar educational trust fund when he passed away, "
-                    "while leaving my older sister, Ashley (28F), a separate inheritance of thirty thousand dollars in jewelry and cash. "
-                    "By working two part-time jobs and earning scholarships, I graduated debt-free and kept thirty-five thousand dollars preserved for a home deposit. "
-                    "Ashley, on the other hand, blew through her entire inheritance within eighteen months on luxury designer bags and expensive trips to Dubai. "
-                    "Six months ago, Ashley got engaged and insisted on booking a lavish French castle venue with celebrity photographers. "
-                    "When the invoices arrived sixty thousand dollars over budget, my parents called an urgent family meeting. "
-                    "My father informed me that because grandfather's money was meant to benefit the entire family, I was expected to transfer thirty thousand "
-                    "dollars from my savings to pay off Ashley's wedding vendors. "
-                    "When I refused, Ashley threw a glass against the wall, calling me a selfish brother who cared more about bank numbers than her big day. "
-                    "My mother gave me a forty-eight-hour ultimatum to wire the money or be uninvited from the wedding. "
-                    "What none of them realized was that Ashley's wealthy fiancé had no idea about this scheme; Ashley had told him our parents were paying. "
-                    "I emailed the spreadsheet directly to her fiancé with a polite note explaining I would not be liquidating my savings for their castle. "
-                    "Her fiancé was completely mortified. He confronted Ashley that night, canceled the overseas venue, and postponed the wedding indefinitely. "
-                    "Now my family calls me a monster, but I protected my life savings."
-                ),
-            },
+            "female": [
+                {
+                    "title": "My parents secretly gave my late grandmother's house to my brother, so I called the county tax assessor",
+                    "body": (
+                        "I (27F) was deeply close to my late grandmother, who passed away eighteen months ago. Before she passed, she repeatedly told our "
+                        "family that her historic lakeside cottage was to be split equally between me and my older brother, Jason (30M). "
+                        "My parents, who were appointed co-executors of the estate, assured me that probate was taking longer than expected due to legal backlogs. "
+                        "Last weekend, I drove past the lake house and was shocked to see moving vans and custom remodeling crews outside. "
+                        "Jason was standing on the porch, directing workers while drinking beer. When I confronted him, he grinned and said, "
+                        "'Mom and Dad transferred the deed entirely to my name last month as an early wedding gift. You can visit on holidays if you RSVP.' "
+                        "I immediately drove to the county courthouse and pulled the public property records. "
+                        "To my horror, my parents had filed fraudulent estate conveyance documents, declaring Jason as the sole surviving heir while omitting my name. "
+                        "Furthermore, to avoid paying estate transfer taxes, they had assessed the market value at fifty thousand dollars instead of its true "
+                        "market appraisal of six hundred and fifty thousand dollars. "
+                        "I didn't argue with my parents. Instead, I hired an estate litigation attorney and filed a formal audit request with the state revenue department. "
+                        "The county tax assessor launched an immediate fraud investigation, placed an injunction on the property deed, and hit my parents with "
+                        "seventy-five thousand dollars in tax penalties. Jason was forced to halt construction, and probate court has frozen all family accounts. "
+                        "My mother called me weeping, accusing me of tearing the family apart over money. "
+                        "I told her she was the one who stole from her own daughter."
+                    ),
+                },
+                {
+                    "title": "My sister sold our late mother's heirloom jewelry behind my back, so I called the auction house",
+                    "body": (
+                        "I (28F) lost my mother two years ago after a brave battle with cancer. In her handwritten will, she explicitly designated that her "
+                        "vintage jewelry collection, including an Edwardian sapphire necklace handed down through four generations, was to be split fifty-fifty "
+                        "between me and my younger sister, Vanessa (25F). Vanessa was always irresponsible with money, racking up massive credit card debts on fast fashion. "
+                        "Three months ago, Vanessa got engaged and announced she was having a six-figure celebrity-style wedding at a vineyard. "
+                        "When I asked my father when we could schedule our appointment with the estate appraisal attorney to divide mother's safety deposit box, "
+                        "he looked evasive and muttered that Vanessa had taken the lockbox keys for safekeeping. "
+                        "Alarm bells rang immediately. I called the downtown vault repository and learned Vanessa had cleaned out the entire safe three weeks prior. "
+                        "I logged onto high-end local luxury estate auction websites and found the exact sapphire necklace listed as Lot 402 with an opening bid "
+                        "of eighteen thousand dollars, consigned under Vanessa's name. Vanessa had secretly sold our mother's most sentimental treasures to fund "
+                        "a bespoke designer wedding dress and custom ice sculptures. "
+                        "I didn't confront Vanessa with a heated phone call. Instead, I sent the notarized probate will, mother's insurance appraisals, and high-resolution "
+                        "family photos directly to the auction house's legal counsel. The auction house immediately flagged the lot as contested stolen property, canceled "
+                        "the sale, and impounded the jewelry in their secure vault. Then, my attorney filed emergency conversion charges against Vanessa in probate court. "
+                        "Vanessa broke down in tears when the court ordered her to return all items within forty-eight hours or face criminal charges. "
+                        "Her fiancé was so disgusted by her dishonesty that he called off the engagement entirely. "
+                        "My mother's legacy is safely back in my possession, and Vanessa learned that greed always carries a heavy price."
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "My family excluded me from our annual vacation after I refused to pay eight thousand dollars for my sister's kids",
+                    "body": (
+                        "I (27M) work as a software engineer and have always been responsible with my finances. Every summer, my extended family organizes an extravagant "
+                        "group vacation. My grandmother originally set up a modest family travel trust before she passed away, but my parents and my older sister, Emily (31F), "
+                        "quickly depleted the remaining funds over the years. Four months ago, our family group chat started buzzing with plans for a two-week resort getaway "
+                        "in Maui. My father called me directly and casually dropped a bombshell: he told me that because Emily had three young kids and her husband was 'between jobs', "
+                        "the family had decided I should cover eight thousand dollars for Emily's flights, rental SUV, and adjoining suites. "
+                        "When I politely laughed and said I could barely justify spending that much on my own travel, my father's tone turned icy. He told me that family sacrifices "
+                        "for family, and that if I wasn't willing to contribute my fair share, I was being selfish and greedy. "
+                        "Two days later, I was removed from the family vacation WhatsApp group. My mother texted me saying that until I apologized and transferred the money to Emily, "
+                        "I was officially disinvited from the trip. They assumed I would feel isolated and cave to their demands. "
+                        "Instead, I took the eight thousand dollars they demanded, added my own vacation budget, and booked a first-class solo journey across the Amalfi Coast in Italy. "
+                        "I stayed in cliffside boutique hotels, ate handmade pasta overlooking the Mediterranean, and posted gorgeous photos on my Instagram. "
+                        "Meanwhile, their Hawaii trip was an unmitigated disaster. It turns out Emily had secretly borrowed five thousand dollars from our aunt under the pretense "
+                        "that I was reimbursing her later. On day four of their trip, during breakfast at the resort, our aunt publicly confronted Emily about the missing money. "
+                        "An explosive screaming match broke out in the hotel lobby, with accusations flying across three generations. Emily broke down and admitted she had spent "
+                        "the travel trust on personal designer shopping. When they returned home, my father was so humiliated that he had to sell a parcel of undeveloped rural land "
+                        "he had owned for fifteen years just to settle Emily's unpaid resort debts and pay back our aunt. "
+                        "A week later, my father called me, completely defeated. He admitted Emily had lied to everyone and apologized for ostracizing me. "
+                        "I told him I loved him, but that my wallet would never be an open bank account for my sister's entitlement again. "
+                        "They haven't gone on a family vacation since, and I've never had more peace in my life."
+                    ),
+                },
+                {
+                    "title": "My sister demanded my college trust fund after blowing her inheritance on luxury vacations",
+                    "body": (
+                        "I (25M) was fortunate that our grandfather left me a fifty-thousand-dollar educational trust fund when he passed away, "
+                        "while leaving my older sister, Ashley (28F), a separate inheritance of thirty thousand dollars in jewelry and cash. "
+                        "By working two part-time jobs and earning scholarships, I graduated debt-free and kept thirty-five thousand dollars preserved for a home deposit. "
+                        "Ashley, on the other hand, blew through her entire inheritance within eighteen months on luxury designer bags and expensive trips to Dubai. "
+                        "Six months ago, Ashley got engaged and insisted on booking a lavish French castle venue with celebrity photographers. "
+                        "When the invoices arrived sixty thousand dollars over budget, my parents called an urgent family meeting. "
+                        "My father informed me that because grandfather's money was meant to benefit the entire family, I was expected to transfer thirty thousand "
+                        "dollars from my savings to pay off Ashley's wedding vendors. "
+                        "When I refused, Ashley threw a glass against the wall, calling me a selfish brother who cared more about bank numbers than her big day. "
+                        "My mother gave me a forty-eight-hour ultimatum to wire the money or be uninvited from the wedding. "
+                        "What none of them realized was that Ashley's wealthy fiancé had no idea about this scheme; Ashley had told him our parents were paying. "
+                        "I emailed the spreadsheet directly to her fiancé with a polite note explaining I would not be liquidating my savings for their castle. "
+                        "Her fiancé was completely mortified. He confronted Ashley that night, canceled the overseas venue, and postponed the wedding indefinitely. "
+                        "Now my family calls me a monster, but I protected my life savings."
+                    ),
+                },
+            ],
         },
         "entitled": {
-            "female": {
-                "title": "My family went on vacation without me using my savings, so I canceled their villa",
-                "body": (
-                    "I (26F) have been planning our annual family trip to Hawaii for eight months. Every year, my parents and my sister, Jessica, "
-                    "claim they are too stressed to organize anything, so the entire burden falls on me. Last year, Jessica convinced everyone to set up a shared "
-                    "travel savings account under my bank profile, into which I contributed nearly three thousand dollars of my own bonus money. "
-                    "Two days ago, I logged into my banking app to finalize the balance for the oceanfront beach house rental in Maui. "
-                    "To my absolute horror, the balance was zeroed out. Jessica had used her card access to withdraw all four thousand five hundred dollars in cash. "
-                    "I rushed to my parents' house, only to find it empty. On the counter was an itinerary for three tickets to Honolulu: for my mom, dad, and Jessica. "
-                    "My name was nowhere on the booking. Taped next to the tickets was a note: 'Decided we needed an intimate family getaway without your micromanaging. "
-                    "Thanks for reserving the villa!' "
-                    "They had stolen my money, boarded a red-eye flight, and expected to check into the luxury villa booked exclusively under my name and credit card. "
-                    "I called the villa owner immediately, explained the fraud, and canceled the reservation for a full refund credited back to my personal card. "
-                    "Then, I reported the unauthorized cash withdrawal to my bank and froze the account. "
-                    "Ten hours later, my father called screaming that they were stranded on the curb in the pouring rain with their luggage, locked out of the villa. "
-                    "Jessica sent frantic messages demanding emergency hotel money because every resort was fully booked for peak season. "
-                    "I texted back a screenshot of the fraud report, switched my phone to Do Not Disturb, and slept peacefully."
-                ),
-            },
-            "male": {
-                "title": "My entitled roommate stole my car for a date, so I had it towed and reported it",
-                "body": (
-                    "I (27M) bought my dream car last summer: a restored classic coupe that I spent four years saving for. "
-                    "Three months ago, my college buddy Dave moved into my spare bedroom while searching for work. From day one, Dave felt entitled to everything, "
-                    "from my groceries to my clothes, but the one non-negotiable rule was that he was never, under any circumstances, to touch my car keys. "
-                    "Last Friday, I heard Dave bragging on speakerphone to a date about the vintage ride he was going to pick her up in. "
-                    "Thirty minutes later, when I walked down to the garage, my parking spot was empty. "
-                    "Dave had sneaked into my bedroom while I was showering, grabbed the spare key from my dresser, and driven off. "
-                    "When I called him, loud club music was blaring. He yelled, 'Chill out bro, I'm just borrowing it to look good for a couple hours,' and hung up. "
-                    "My car has a hidden GPS tracking tag in the trunk. I opened the app and saw he was parked outside an exclusive VIP lounge downtown "
-                    "in a red curb zone right in front of a fire hydrant. "
-                    "Instead of begging him for my keys, I called city parking enforcement and local impound directly, gave them the exact coordinates, "
-                    "and requested an immediate unauthorized-driver tow. "
-                    "Within twenty-five minutes, the flatbed tow truck hauled my car away into a secured impound facility. "
-                    "At 1 AM, Dave called in hysterics. His date had walked out to an empty street, left him in humiliation, and the impound fee was seven hundred dollars. "
-                    "When he finally got home in the morning, his bags were waiting on the porch."
-                ),
-            },
+            "female": [
+                {
+                    "title": "My family went on vacation without me using my savings, so I canceled their villa",
+                    "body": (
+                        "I (26F) have been planning our annual family trip to Hawaii for eight months. Every year, my parents and my sister, Jessica, "
+                        "claim they are too stressed to organize anything, so the entire burden falls on me. Last year, Jessica convinced everyone to set up a shared "
+                        "travel savings account under my bank profile, into which I contributed nearly three thousand dollars of my own bonus money. "
+                        "Two days ago, I logged into my banking app to finalize the balance for the oceanfront beach house rental in Maui. "
+                        "To my absolute horror, the balance was zeroed out. Jessica had used her card access to withdraw all four thousand five hundred dollars in cash. "
+                        "I rushed to my parents' house, only to find it empty. On the counter was an itinerary for three tickets to Honolulu: for my mom, dad, and Jessica. "
+                        "My name was nowhere on the booking. Taped next to the tickets was a note: 'Decided we needed an intimate family getaway without your micromanaging. "
+                        "Thanks for reserving the villa!' "
+                        "They had stolen my money, boarded a red-eye flight, and expected to check into the luxury villa booked exclusively under my name and credit card. "
+                        "I called the villa owner immediately, explained the fraud, and canceled the reservation for a full refund credited back to my personal card. "
+                        "Then, I reported the unauthorized cash withdrawal to my bank and froze the account. "
+                        "Ten hours later, my father called screaming that they were stranded on the curb in the pouring rain with their luggage, locked out of the villa. "
+                        "Jessica sent frantic messages demanding emergency hotel money because every resort was fully booked for peak season. "
+                        "I texted back a screenshot of the fraud report, switched my phone to Do Not Disturb, and slept peacefully."
+                    ),
+                },
+                {
+                    "title": "My entitled landlord tried to keep my three-thousand-dollar deposit, so I called code enforcement",
+                    "body": (
+                        "I (26F) lived in a two-bedroom apartment for three years while finishing graduate school. I always paid rent five days early and kept "
+                        "the place in immaculate condition. Last month, I purchased my first starter townhouse and gave my landlord, Mr. Henderson, sixty days of formal notice. "
+                        "During our final walkthrough, Henderson brought out a white glove and a clipboard. He claimed there was 'invisible dust' behind the refrigerator, "
+                        "normal scuffs on the baseboards, and that the original carpeting from 2014 was slightly worn. Three days later, he sent me an itemized invoice "
+                        "stating that my entire three-thousand-dollar security deposit was forfeited, plus I allegedly owed him an additional four hundred dollars for deep cleaning. "
+                        "When I politely requested receipts and reminded him that state law prohibits deducting for standard wear and tear, he sneered over email: "
+                        "'Sue me if you want, college girl. Lawyers cost more than deposits.' "
+                        "What Henderson didn't realize was that during my three years there, I had documented dozens of building safety violations he refused to fix. "
+                        "The building had unpermitted basement partitions rented out illegally to six tenants, blocked fire exits, and uninspected water boilers. "
+                        "Instead of arguing with Henderson, I sent a formal fifty-page complaint packet with photos and timestamps to the city department of buildings, "
+                        "the local fire marshal, and the county housing authority. Within seventy-two hours, three city inspectors showed up with clipboards and red tape. "
+                        "They shut down his illegal basement apartments immediately, issued forty-five thousand dollars in municipal fines, and ordered emergency repairs. "
+                        "Henderson called me in an absolute panic, practically begging to wire my full three thousand dollars back with interest if I retracted the report. "
+                        "I told him city safety isn't negotiable. The check cleared the next morning, and he spent his entire summer dealing with building inspectors."
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "I refused to hand over my proprietary logistics system — they fired me immediately, and their entire operations froze",
+                    "body": (
+                        "I (29M) am an independent software architect specializing in warehouse routing and automated freight logistics. "
+                        "Three years ago, a regional distribution company hired me as an external contractor to build a custom dispatch algorithm. "
+                        "In my initial contract, Section 4 explicitly stated that all core source infrastructure and proprietary routing algorithms remained "
+                        "my intellectual property, while the client was granted an operating license that terminated upon cessation of my consulting contract. "
+                        "Over thirty-six months, my system reduced their delivery delays by forty percent and saved them nearly two million dollars annually. "
+                        "Last month, a new Vice President of Operations was brought in. On his second day, he called me into the executive boardroom. "
+                        "The VP slammed a transfer agreement onto the desk and demanded that I hand over all root GitHub repositories and encryption keys without extra compensation. "
+                        "He sneered that contractors don't get to hold company assets hostage. I calmly pointed out Section 4 of our signed agreement, explaining that while "
+                        "they had access to user dashboards, the underlying engine was licensed, not owned. The VP turned purple with rage. "
+                        "He pointed at security and yelled, 'You are terminated effective immediately. We will reverse-engineer your code by Friday, and our legal team "
+                        "will sue you into bankruptcy.' Security escorted me to the parking lot before I could even log out. "
+                        "What the arrogant VP failed to realize was that my system relied on dynamic daily API calibration certificates that updated automatically every "
+                        "forty-eight hours based on live GPS traffic telemetry. Exactly forty-eight hours after they locked my credentials, the system license expired. "
+                        "At 6 AM on Monday morning, over four hundred freight trucks across six fulfillment centers were stranded with blank dispatch screens. "
+                        "Their internal IT team had zero access to the encrypted routing models. Drivers could not print manifests, perishable cargo sat on loading bays, "
+                        "and national supermarket clients threatened millions of dollars in penalties. By noon, the CEO himself called me, practically pleading on speakerphone. "
+                        "I informed the CEO that my emergency reactivation rate was twenty-five thousand dollars upfront, plus a three-year mandatory enterprise SLA at triple "
+                        "my previous retainer. The CEO wired the funds within twenty minutes. The VP was dismissed three weeks later, and I protected my life's work."
+                    ),
+                },
+                {
+                    "title": "My entitled roommate stole my car for a date, so I had it towed and reported it",
+                    "body": (
+                        "I (27M) bought my dream car last summer: a restored classic coupe that I spent four years saving for. "
+                        "Three months ago, my college buddy Dave moved into my spare bedroom while searching for work. From day one, Dave felt entitled to everything, "
+                        "from my groceries to my clothes, but the one non-negotiable rule was that he was never, under any circumstances, to touch my car keys. "
+                        "Last Friday, I heard Dave bragging on speakerphone to a date about the vintage ride he was going to pick her up in. "
+                        "Thirty minutes later, when I walked down to the garage, my parking spot was empty. "
+                        "Dave had sneaked into my bedroom while I was showering, grabbed the spare key from my dresser, and driven off. "
+                        "When I called him, loud club music was blaring. He yelled, 'Chill out bro, I'm just borrowing it to look good for a couple hours,' and hung up. "
+                        "My car has a hidden GPS tracking tag in the trunk. I opened the app and saw he was parked outside an exclusive VIP lounge downtown "
+                        "in a red curb zone right in front of a fire hydrant. "
+                        "Instead of begging him for my keys, I called city parking enforcement and local impound directly, gave them the exact coordinates, "
+                        "and requested an immediate unauthorized-driver tow. "
+                        "Within twenty-five minutes, the flatbed tow truck hauled my car away into a secured impound facility. "
+                        "At 1 AM, Dave called in hysterics. His date had walked out to an empty street, left him in humiliation, and the impound fee was seven hundred dollars. "
+                        "When he finally got home in the morning, his bags were waiting on the porch."
+                    ),
+                },
+            ],
         },
         "aitah": {
-            "female": {
-                "title": "AITA for walking out of my sister's wedding after seeing the seating chart?",
-                "body": (
-                    "I (27F) have always had a rocky relationship with my older sister, Chloe. Growing up, our parents treated her like royalty while I was "
-                    "expected to blend into the wallpaper. When Chloe announced her engagement last year, I genuinely wanted to put the past behind us. "
-                    "I spent months helping her organize floral arrangements, drove six hours to pick up her custom veil, and contributed fifteen hundred "
-                    "dollars toward her catering company when she went over budget. "
-                    "Fast forward to the wedding day yesterday. The ceremony was gorgeous, but as everyone walked into the grand ballroom for the reception, "
-                    "people started crowding around the master seating display. I searched for my name at Table 1 alongside our parents and grandparents, but I was not there. "
-                    "I checked Table 2 with the bridal party. Nothing. "
-                    "Finally, my cousin tapped my shoulder with a look of pure second-hand embarrassment and pointed towards the far back corner. "
-                    "Tucked away right behind the industrial kitchen swinging doors, next to the emergency fire extinguisher, was a small fold-out table labeled 'Vendors and Extra Guests.' "
-                    "Sitting right there was my name card. Sitting at the head table with our immediate family was Chloe's ex-boyfriend, whom she had invited as an honored guest. "
-                    "When I confronted Chloe in the dressing room, she laughed and said, 'Space was tight, and you are family, so you understand.' "
-                    "I took a deep breath, handed her back my corsage, and walked straight out to my car. "
-                    "Now my phone is blowing up with family calling me selfish for causing a scene. Am I the asshole?"
-                ),
-            },
-            "male": {
-                "title": "AITA for locking my brother out of my apartment after finding what he did in my kitchen?",
-                "body": (
-                    "I (29M) bought my first two-bedroom condo six months ago after saving aggressively for seven straight years. "
-                    "My younger brother, Mark (25M), recently graduated and needed a temporary place to stay while interviewing for jobs. "
-                    "I told him he could stay in my spare room rent-free for three weeks under two clear conditions: keep the shared spaces clean, "
-                    "and never throw parties while I was working seventy-hour hospital night shifts. "
-                    "Last night, I returned home at 7 AM completely exhausted after back-to-back emergency rotations. The moment I opened my front door, "
-                    "the smell of burnt sugar and scorched electronics hit me. I walked into my kitchen and found the entire marble countertop covered in scorched grease, "
-                    "shattered glass from my blender, and multiple broken light fixtures. "
-                    "Mark had invited nine of his college buddies over at 3 AM to shoot amateur viral food challenges for social media. "
-                    "They had tried deep-frying whole candy bars in an open aluminum pot, which caught fire and scorched my custom cabinets. "
-                    "Mark was passed out on the sofa surrounded by trash, completely indifferent. "
-                    "I packed his bags immediately, set them outside the hallway door, changed the digital lock code, and went to sleep. "
-                    "My mother called me in tears this afternoon, saying Mark is sleeping in his car and that brothers always forgive each other. "
-                    "Am I the asshole for kicking him out?"
-                ),
-            },
+            "female": [
+                {
+                    "title": "AITA for walking out of my sister's wedding after seeing the seating chart?",
+                    "body": (
+                        "I (27F) have always had a rocky relationship with my older sister, Chloe. Growing up, our parents treated her like royalty while I was "
+                        "expected to blend into the wallpaper. When Chloe announced her engagement last year, I genuinely wanted to put the past behind us. "
+                        "I spent months helping her organize floral arrangements, drove six hours to pick up her custom veil, and contributed fifteen hundred "
+                        "dollars toward her catering company when she went over budget. "
+                        "Fast forward to the wedding day yesterday. The ceremony was gorgeous, but as everyone walked into the grand ballroom for the reception, "
+                        "people started crowding around the master seating display. I searched for my name at Table 1 alongside our parents and grandparents, but I was not there. "
+                        "I checked Table 2 with the bridal party. Nothing. "
+                        "Finally, my cousin tapped my shoulder with a look of pure second-hand embarrassment and pointed towards the far back corner. "
+                        "Tucked away right behind the industrial kitchen swinging doors, next to the emergency fire extinguisher, was a small fold-out table labeled 'Vendors and Extra Guests.' "
+                        "Sitting right there was my name card. Sitting at the head table with our immediate family was Chloe's ex-boyfriend, whom she had invited as an honored guest. "
+                        "When I confronted Chloe in the dressing room, she laughed and said, 'Space was tight, and you are family, so you understand.' "
+                        "I took a deep breath, handed her back my corsage, and walked straight out to my car. "
+                        "Now my phone is blowing up with family calling me selfish for causing a scene. Am I the asshole?"
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "AITA for locking my brother out of my apartment after finding what he did in my kitchen?",
+                    "body": (
+                        "I (29M) bought my first two-bedroom condo six months ago after saving aggressively for seven straight years. "
+                        "My younger brother, Mark (25M), recently graduated and needed a temporary place to stay while interviewing for jobs. "
+                        "I told him he could stay in my spare room rent-free for three weeks under two clear conditions: keep the shared spaces clean, "
+                        "and never throw parties while I was working seventy-hour hospital night shifts. "
+                        "Last night, I returned home at 7 AM completely exhausted after back-to-back emergency rotations. The moment I opened my front door, "
+                        "the smell of burnt sugar and scorched electronics hit me. I walked into my kitchen and found the entire marble countertop covered in scorched grease, "
+                        "shattered glass from my blender, and multiple broken light fixtures. "
+                        "Mark had invited nine of his college buddies over at 3 AM to shoot amateur viral food challenges for social media. "
+                        "They had tried deep-frying whole candy bars in an open aluminum pot, which caught fire and scorched my custom cabinets. "
+                        "Mark was passed out on the sofa surrounded by trash, completely indifferent. "
+                        "I packed his bags immediately, set them outside the hallway door, changed the digital lock code, and went to sleep. "
+                        "My mother called me in tears this afternoon, saying Mark is sleeping in his car and that brothers always forgive each other. "
+                        "Am I the asshole for kicking him out?"
+                    ),
+                },
+            ],
         },
     }
 
     category_dict = story_database.get(cat_key, story_database["aitah"])
-    chosen = category_dict[target_gender]
+    gender_stories = category_dict[target_gender]
+    chosen = random.choice(gender_stories) if isinstance(gender_stories, list) else gender_stories
 
-    cleaned_title = clean_story_title(chosen["title"])
+    cleaned_title = clean_story_title(chosen["title"], category=cat_key)
     cleaned_body = clean_text_for_narration(chosen["body"])
 
     return Story(
         title=cleaned_title,
         body=cleaned_body,
         narrator_gender=target_gender,
-        source="fallback",
+        source="curated_library",
         word_count=len(cleaned_body.split()),
-        tags=["fallback", "redditstories", cat_key],
+        tags=["curated", "viral_storytime", cat_key],
     )
 
 
@@ -710,9 +866,9 @@ def get_story(
     """Master entry point to retrieve or generate a story following the specified strategy.
 
     Supports diverse viral categories:
-    - 'love': Love & Relationship drama
-    - 'inheritance': Family inheritance & estate battles
-    - 'entitled': Entitled people & roommate karma
+    - 'love': Love & Relationship drama (cheating, secret phones, wedding confessions)
+    - 'inheritance': Family inheritance & estate battles (wills, trusts, vacation drama)
+    - 'entitled': Entitled people & roommate karma (logistics systems, towing cars, deposit payback)
     - 'aitah': Classic AITAH moral conflicts
 
     Args:
@@ -727,8 +883,8 @@ def get_story(
     elif config.story_category and config.story_category != "auto" and config.story_category in STORY_CATEGORIES:
         selected_cat = config.story_category
     else:
-        # Rotate dynamically across all diverse categories
-        selected_cat = random.choice(list(STORY_CATEGORIES.keys()))
+        # Rotate dynamically across all diverse categories (weighted towards rich drama)
+        selected_cat = random.choice(["love", "inheritance", "entitled", "aitah"])
 
     cat_info = STORY_CATEGORIES[selected_cat]
     logger.info("Selected story category: '%s' (%s)", selected_cat, cat_info["name"])
@@ -740,7 +896,7 @@ def get_story(
         gemini_story = generate_with_gemini(gender_override=gender_override, category=selected_cat)
         if gemini_story:
             return gemini_story
-        logger.warning("Gemini generation failed; falling back to Reddit ingestion.")
+        logger.warning("Gemini generation failed; falling back to alternative sources.")
 
     # 3. Live Reddit Ingestion for subreddits matching the chosen category
     subreddits = [preferred_subreddit] if preferred_subreddit else cat_info["subreddits"]
@@ -759,12 +915,14 @@ def get_story(
                 story.narrator_gender = gender_override
             return story
 
-    # 4. Autonomous 270,000+ Reddit Dataset filtered by category keywords
-    story = fetch_from_huggingface_reddit(category=selected_cat)
-    if story:
-        if gender_override:
-            story.narrator_gender = gender_override
-        return story
+    # 4. If category is 'aitah', try the 270k AITAH dataset
+    # (Note: we ONLY query AITAH dataset if category is aitah, to prevent AITA hijacking other categories!)
+    if selected_cat == "aitah":
+        story = fetch_from_huggingface_reddit(category="aitah")
+        if story:
+            if gender_override:
+                story.narrator_gender = gender_override
+            return story
 
     # 5. Gemini fallback if configured and not yet tried
     if config.gemini_api_key:
@@ -774,5 +932,5 @@ def get_story(
             return gemini_story
 
     # 6. Curated Fallback Story in the requested category
-    logger.info("Using curated fallback story for category '%s'", selected_cat)
+    logger.info("Using curated viral story library for category '%s'", selected_cat)
     return get_curated_fallback_story(gender_override=gender_override, category=selected_cat)

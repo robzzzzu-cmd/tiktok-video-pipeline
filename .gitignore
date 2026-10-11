@@ -17,6 +17,7 @@ temp/
 tmp/
 *.mp4
 *.mp3
+!assets/*.mp3
 *.wav
 *.ass
 *.log

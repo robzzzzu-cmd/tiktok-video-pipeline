@@ -77,10 +77,13 @@ def test_curated_fallback_all_categories():
 
 def test_clean_story_title():
     from src.story_generator import clean_story_title
-    # Preserves AITA and WIBTA prefixes as requested (expanded to natural spoken forms)
-    assert "Am I the asshole for" in clean_story_title("AITA for walking out of my sister's wedding?")
+    # Preserves AITA and WIBTA prefixes for aitah category
+    assert "Am I the asshole for" in clean_story_title("AITA for walking out of my sister's wedding?", category="aitah")
     assert clean_story_title("[UPDATE] My roommate stole my car") == "My roommate stole my car"
-    assert "Would I be the asshole if" in clean_story_title("WIBTA if I told my parents the truth?")
+    assert "Would I be the asshole if" in clean_story_title("WIBTA if I told my parents the truth?", category="aitah")
+    # Cleanly strips AITA prefixes for non-AITAH categories (love, inheritance, entitled)
+    assert "Walking out" in clean_story_title("AITA for walking out of my sister's wedding?", category="love")
+    assert "Sister sold" in clean_story_title("AITA for my sister sold our house?", category="inheritance")
 
 
 def test_fetch_from_huggingface_reddit():

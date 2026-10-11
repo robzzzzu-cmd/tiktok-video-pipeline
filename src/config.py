@@ -79,7 +79,7 @@ class PipelineConfig(BaseModel):
         )
     )
     bg_music_volume_db: str = Field(
-        default_factory=lambda: os.getenv("BG_MUSIC_VOLUME_DB") or "-26dB"
+        default_factory=lambda: os.getenv("BG_MUSIC_VOLUME_DB") or "-17dB"
     )
 
     # Story & Voice Settings
