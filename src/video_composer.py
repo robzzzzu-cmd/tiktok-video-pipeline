@@ -449,30 +449,28 @@ def generate_quiet_ambient_music(duration: float, output_path: Path) -> Path:
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg is required for ambient music generation.")
 
+    codec = ["-c:a", "libmp3lame"] if output_path.suffix.lower() == ".mp3" else ["-c:a", "aac"]
     cmd = [
         "ffmpeg",
         "-y",
         "-f", "lavfi",
-        "-i", (
-            "aevalsrc="
-            "'0.03*sin(2*PI*220*t) + 0.025*sin(2*PI*261.63*t) + 0.025*sin(2*PI*329.63*t) + 0.02*sin(2*PI*392*t)':"
-            f"s=44100:d={duration + 10}"
-        ),
-        "-af", "lowpass=f=700,volume=0.15",
-        "-c:a", "aac",
+        "-i", f"sine=frequency=220:duration={duration + 10}",
+        "-af", "volume=0.03",
+        *codec,
         "-b:a", "128k",
         str(output_path),
     ]
     try:
         subprocess.run(cmd, check=True, capture_output=True)
     except Exception:
-        # Fallback to soft pink noise ambient hum if aevalsrc not available
+        # Fallback to anullsrc silent audio if sine fails
         cmd_alt = [
             "ffmpeg",
             "-y",
             "-f", "lavfi",
-            "-i", f"anoisesrc=d={duration + 10}:c=pink:r=44100:a=0.015",
-            "-c:a", "aac",
+            "-i", "anullsrc=r=44100:cl=stereo",
+            "-t", str(duration + 10),
+            *codec,
             str(output_path),
         ]
         subprocess.run(cmd_alt, check=True, capture_output=True)
