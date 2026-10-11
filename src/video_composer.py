@@ -85,10 +85,15 @@ def download_background_clip(
             "yt-dlp",
             "--download-sections", f"*{start_sec}-{end_sec}",
             "--force-keyframes-at-cuts",
-            "-f", "bv*[ext=mp4][height<=1080]+ba[ext=m4a]/b[ext=mp4]/best[ext=mp4]/best",
+            "--extractor-args", "youtube:player_client=android,web",
+            "-f", "bv*[height<=1080]+ba/b[height<=1080]/best",
+            "--merge-output-format", "mp4",
             "--no-playlist",
+            "--no-check-certificates",
+            "--geo-bypass",
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "--retries", "3",
-            "--socket-timeout", "15",
+            "--socket-timeout", "20",
             "-o", str(temp_download),
             config.background_video_url,
         ]
@@ -101,8 +106,18 @@ def download_background_clip(
                 temp_download.rename(output_path)
                 logger.info("Successfully downloaded background video segment: %s", output_path)
                 return output_path
+        except subprocess.CalledProcessError as e:
+            logger.warning(
+                "yt-dlp download failed on attempt %d: %s | stderr: %s",
+                attempt,
+                e,
+                e.stderr[:300] if e.stderr else "N/A",
+            )
+            if temp_download.exists():
+                temp_download.unlink()
+            time.sleep(2 * attempt)
         except Exception as e:
-            logger.warning("yt-dlp download failed on attempt %d: %s", attempt, e)
+            logger.warning("yt-dlp unexpected error on attempt %d: %s", attempt, e)
             if temp_download.exists():
                 temp_download.unlink()
             time.sleep(2 * attempt)

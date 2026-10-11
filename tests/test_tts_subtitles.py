@@ -1,7 +1,7 @@
 """Unit tests for subtitles generation and timing calculations."""
 
 from pathlib import Path
-from src.tts_engine import WordTiming
+from src.tts_engine import WordTiming, estimate_word_timings_from_text
 from src.subtitles import (
     format_ass_time,
     build_chunks,
@@ -56,3 +56,13 @@ def test_generate_ass_subtitles(tmp_path: Path):
     assert "HELLO" in content
     assert "TIKTOK" in content
     assert "WORLD" in content
+
+
+def test_estimate_word_timings_from_text():
+    text = "Hello world this is a test story."
+    timings = estimate_word_timings_from_text(text, total_duration=10.0)
+    assert len(timings) == 7
+    assert timings[0].word == "Hello"
+    assert timings[-1].word == "story."
+    assert timings[0].start < timings[0].end
+    assert timings[-1].end <= 10.0

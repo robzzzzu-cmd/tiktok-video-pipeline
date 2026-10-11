@@ -71,7 +71,9 @@ async def _synthesize_edge_tts(
     """Synthesizes text using edge-tts and streams WordBoundary events."""
     word_timings: List[WordTiming] = []
 
-    communicate = edge_tts.Communicate(text=text, voice=voice, rate="+0%", pitch="+0Hz")
+    communicate = edge_tts.Communicate(
+        text=text, voice=voice, rate="+0%", pitch="+0Hz", boundary="WordBoundary"
+    )
 
     with open(output_audio, "wb") as f_out:
         async for chunk in communicate.stream():
@@ -92,6 +94,41 @@ async def _synthesize_edge_tts(
                     )
 
     return word_timings
+
+
+def estimate_word_timings_from_text(text: str, total_duration: float) -> List[WordTiming]:
+    """Fallback estimator that calculates word timings proportionally across total duration."""
+    raw_words = text.split()
+    if not raw_words or total_duration <= 0:
+        return []
+
+    # Assign weights based on character length with extra weight for punctuation pauses
+    weights = []
+    for w in raw_words:
+        base_weight = max(1, len(w))
+        if w[-1] in ".!?":
+            base_weight += 4
+        elif w[-1] in ",;:":
+            base_weight += 2
+        weights.append(base_weight)
+
+    total_weight = sum(weights)
+    current_time = 0.1  # Initial speech onset offset
+    available_duration = max(1.0, total_duration - 0.4)
+
+    timings: List[WordTiming] = []
+    for w, weight in zip(raw_words, weights):
+        word_dur = (weight / total_weight) * available_duration
+        timings.append(
+            WordTiming(
+                word=w,
+                start=round(current_time, 3),
+                end=round(current_time + word_dur, 3),
+            )
+        )
+        current_time += word_dur
+
+    return timings
 
 
 def generate_voiceover(
@@ -151,6 +188,11 @@ def generate_voiceover(
             duration = word_timings[-1].end + 0.5
         else:
             duration = 180.0
+
+    # If no WordBoundary events were emitted, use proportional timing estimation
+    if not word_timings:
+        logger.info("Using proportional word timing estimation across %.2fs duration.", duration)
+        word_timings = estimate_word_timings_from_text(text, duration)
 
     # Save word timings metadata
     metadata = {
