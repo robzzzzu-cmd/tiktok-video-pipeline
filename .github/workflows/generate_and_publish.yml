@@ -1,0 +1,125 @@
+name: Generate and Publish TikTok Video
+
+on:
+  schedule:
+    # Daily at 14:00 UTC
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'Story source (auto, reddit, or gemini)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - reddit
+          - gemini
+      gender:
+        description: 'Narrator voice gender'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - male
+          - female
+      dry_run:
+        description: 'Simulate TikTok upload without actual posting'
+        required: false
+        default: false
+        type: boolean
+      skip_upload:
+        description: 'Generate video and save artifact only (skip publishing)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: tiktok-pipeline-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install System Dependencies & Fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-montserrat fonts-freefont-ttf fontconfig
+          fc-cache -fv
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright Chromium (Fallback Uploader)
+        run: |
+          playwright install --with-deps chromium
+
+      - name: Run Test Suite
+        run: |
+          pytest tests/ -v
+
+      - name: Run TikTok Video Pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+          TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID }}
+        run: |
+          # Build command flags
+          SOURCE="${{ inputs.source || 'auto' }}"
+          GENDER="${{ inputs.gender || 'auto' }}"
+          FLAGS="--source $SOURCE --gender $GENDER"
+
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            FLAGS="$FLAGS --dry-run"
+          fi
+
+          if [ "${{ inputs.skip_upload }}" = "true" ]; then
+            FLAGS="$FLAGS --skip-upload"
+          fi
+
+          echo "Executing: python -m src.main $FLAGS"
+          python -m src.main $FLAGS
+
+      - name: Upload Generated Video and Run Summary
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tiktok-run-${{ github.run_number }}-${{ github.run_id }}
+          path: |
+            output/*.mp4
+            output/*.json
+            temp/playwright_debug/*.png
+          retention-days: 14
+
+      - name: Publish Workflow Step Summary
+        if: always()
+        run: |
+          if [ -f output/latest_run_summary.json ]; then
+            echo "## 🎬 TikTok Video Generation Summary" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat output/latest_run_summary.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ No run summary found. Check workflow logs for details." >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,0 +1,24 @@
+# Core Text-to-Speech & Subtitles
+edge-tts>=6.1.12
+
+# Media Download & Audio/Video
+yt-dlp>=2024.08.06
+ffmpeg-python>=0.2.0
+
+# AI Story Generation
+google-genai>=0.1.1
+
+# Reddit Ingestion & HTTP
+requests>=2.31.0
+praw>=7.7.1
+
+# Browser Automation (TikTok Upload Fallback)
+playwright>=1.44.0
+
+# Configuration & Utilities
+pydantic>=2.7.0
+python-dotenv>=1.0.1
+rich>=13.7.0
+
+# Testing & Quality
+pytest>=8.2.0

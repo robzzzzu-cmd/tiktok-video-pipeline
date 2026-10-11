@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments & secrets
+.env
+.venv/
+env/
+venv/
+ENV/
+
+# Output and temp files
+output/*
+!output/.gitkeep
+temp/
+tmp/
+*.mp4
+*.mp3
+*.wav
+*.ass
+*.log
+
+# Playwright & Browser Automation
+test-results/
+playwright-report/
+.playwright/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS specific
+.DS_Store
+Thumbs.db
