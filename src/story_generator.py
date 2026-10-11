@@ -120,11 +120,21 @@ def detect_narrator_gender(text: str, title: str = "") -> str:
         logger.info("Detected male narrator from solitary age/gender tag.")
         return "male"
 
-    # 3. Phrasal declarations: 'I am a woman', 'I'm a 26 year old girl', 'as a guy'
-    if re.search(r"\b(?:I\s+am|I\'m)\s+a\s+(?:woman|girl|female|mother|mom|wife)\b", combined, re.I):
+    # 3. Phrasal declarations: 'I am a woman', 'I am a 30 year old man', 'I'm a 26 year old girl', 'as a guy'
+    female_phrase = re.search(
+        r"\b(?:(?:I\s+am|I\'m|as)\s+a\s+(?:\d{1,2}\s*(?:[-\s]?year[-\s]?old\s+)?)?(?:woman|girl|female|mother|mom|wife)|I\s+am\s+female)\b",
+        combined,
+        re.I,
+    )
+    male_phrase = re.search(
+        r"\b(?:(?:I\s+am|I\'m|as)\s+a\s+(?:\d{1,2}\s*(?:[-\s]?year[-\s]?old\s+)?)?(?:man|guy|male|father|dad|husband)|I\s+am\s+male)\b",
+        combined,
+        re.I,
+    )
+    if female_phrase and not male_phrase:
         logger.info("Detected female narrator from declaration phrase.")
         return "female"
-    if re.search(r"\b(?:I\s+am|I\'m)\s+a\s+(?:man|guy|male|father|dad|husband)\b", combined, re.I):
+    if male_phrase and not female_phrase:
         logger.info("Detected male narrator from declaration phrase.")
         return "male"
 
