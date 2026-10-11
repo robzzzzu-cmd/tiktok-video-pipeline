@@ -38,3 +38,12 @@ def test_normalize_video_url():
     normal_url = "https://example.com/video.mp4"
     assert normalize_video_url(normal_url) == normal_url
 
+
+def test_download_background_music_cached(tmp_path):
+    from src.video_composer import download_background_music
+    cached = tmp_path / "cached_music.mp3"
+    cached.write_bytes(b"dummy_mp3_data")
+    result = download_background_music("https://example.com/audio", output_path=cached)
+    assert result == cached
+    assert result.exists()
+

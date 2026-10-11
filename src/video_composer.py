@@ -395,19 +395,106 @@ def generate_procedural_background(duration: float, output_path: Path) -> Path:
     return output_path
 
 
+def download_background_music(
+    music_url: str,
+    output_path: Path,
+    max_retries: int = 2,
+) -> Path:
+    """Downloads quiet background music from TikTok / web URL or generates ambient music fallback.
+
+    Ensures the pipeline always has a clean, quiet background music track.
+    """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_path.exists() and output_path.stat().st_size > 10240:
+        return output_path
+
+    # Check if bundled music asset exists
+    bundled_music = config.project_root / "assets" / "background_music.mp3"
+    if bundled_music.exists() and bundled_music.stat().st_size > 10240:
+        shutil.copy2(bundled_music, output_path)
+        logger.info("Using bundled background music asset from %s", bundled_music)
+        return output_path
+
+    # Attempt download via yt-dlp
+    if shutil.which("yt-dlp"):
+        for attempt in range(1, max_retries + 1):
+            logger.info("Downloading quiet background music from %s (attempt %d/%d)...", music_url, attempt, max_retries)
+            cmd = [
+                "yt-dlp",
+                "-x",
+                "--audio-format", "mp3",
+                "--no-playlist",
+                "--no-check-certificates",
+                "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "--socket-timeout", "15",
+                "-o", str(output_path),
+                music_url,
+            ]
+            try:
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                if res.returncode == 0 and output_path.exists() and output_path.stat().st_size > 10240:
+                    logger.info("Successfully downloaded background music: %s", output_path)
+                    return output_path
+                logger.warning("yt-dlp music download failed: %s", res.stderr[-200:] if res.stderr else "N/A")
+            except Exception as e:
+                logger.warning("Error downloading background music: %s", e)
+
+    # If download fails, generate soothing, quiet ambient background music using ffmpeg
+    logger.info("Generating quiet ambient background music using ffmpeg synthesizer...")
+    return generate_quiet_ambient_music(duration=180.0, output_path=output_path)
+
+
+def generate_quiet_ambient_music(duration: float, output_path: Path) -> Path:
+    """Generates a gentle, soothing ambient harmonic soundscape using ffmpeg."""
+    if not shutil.which("ffmpeg"):
+        raise RuntimeError("ffmpeg is required for ambient music generation.")
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-f", "lavfi",
+        "-i", (
+            "aevalsrc="
+            "'0.03*sin(2*PI*220*t) + 0.025*sin(2*PI*261.63*t) + 0.025*sin(2*PI*329.63*t) + 0.02*sin(2*PI*392*t)':"
+            f"s=44100:d={duration + 10}"
+        ),
+        "-af", "lowpass=f=700,volume=0.15",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        str(output_path),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except Exception:
+        # Fallback to soft pink noise ambient hum if aevalsrc not available
+        cmd_alt = [
+            "ffmpeg",
+            "-y",
+            "-f", "lavfi",
+            "-i", f"anoisesrc=d={duration + 10}:c=pink:r=44100:a=0.015",
+            "-c:a", "aac",
+            str(output_path),
+        ]
+        subprocess.run(cmd_alt, check=True, capture_output=True)
+
+    return output_path
+
+
 def render_final_video(
     background_video: Path,
     voiceover_audio: Path,
     subtitles_ass: Path,
     output_video: Path,
     duration: float,
+    background_music: Optional[Path] = None,
 ) -> Path:
     """Composites the final vertical TikTok video using ffmpeg.
 
     Applies:
     - 9:16 vertical crop & scale: 1080x1920, 30fps
-    - Burn-in ASS dynamic subtitles using bundled fonts
-    - Mixes TTS voiceover as primary audio + background ASMR at -22dB
+    - Burn-in ASS dynamic subtitles centered in the middle of the screen
+    - Mixes TTS voiceover as primary audio + quiet background music ducked at -26dB
+    - Completely removes all sounds from the background video
     - Exports optimized fast-start H.264 MP4
     """
     if not shutil.which("ffmpeg"):
@@ -417,12 +504,14 @@ def render_final_video(
     if output_video.exists():
         output_video.unlink()
 
+    # Ensure quiet background music track is ready
+    if background_music is None or not background_music.exists():
+        bg_music_file = output_video.parent / "bg_music.mp3"
+        background_music = download_background_music(config.background_music_url, bg_music_file)
+
     # Prepare escaped subtitle and font paths
     escaped_subtitles = escape_ffmpeg_filter_path(subtitles_ass)
     escaped_fontsdir = escape_ffmpeg_filter_path(config.fonts_dir)
-
-    # Check whether background video has audio
-    bg_has_audio = has_audio_stream(background_video)
 
     # Video filter chain: scale -> crop -> 30fps -> subtitles
     video_filter = (
@@ -434,34 +523,27 @@ def render_final_video(
         f"subtitles='{escaped_subtitles}':fontsdir='{escaped_fontsdir}'[v]"
     )
 
+    # Audio filter: duck quiet background music, mix with full voiceover
+    # Note: background video sound [0:a] is completely removed/discarded!
+    audio_filter = (
+        f"[2:a]volume={config.bg_music_volume_db}[bg_music];"
+        f"[1:a]volume=1.0[voice];"
+        f"[voice][bg_music]amix=inputs=2:duration=first:dropout_transition=2[a]"
+    )
+    filter_complex = f"{video_filter};{audio_filter}"
+
     cmd = [
         "ffmpeg",
         "-y",
         "-stream_loop", "-1",
         "-i", str(background_video),
         "-i", str(voiceover_audio),
+        "-stream_loop", "-1",
+        "-i", str(background_music),
+        "-filter_complex", filter_complex,
+        "-map", "[v]",
+        "-map", "[a]",
     ]
-
-    if bg_has_audio:
-        # Audio filter: duck background audio to -22dB, mix with full voiceover
-        audio_filter = (
-            f"[0:a]volume={config.bg_audio_volume_db}[bg_audio];"
-            f"[1:a]volume=1.0[voice];"
-            f"[voice][bg_audio]amix=inputs=2:duration=first:dropout_transition=2[a]"
-        )
-        filter_complex = f"{video_filter};{audio_filter}"
-        cmd.extend([
-            "-filter_complex", filter_complex,
-            "-map", "[v]",
-            "-map", "[a]",
-        ])
-    else:
-        # Only use voiceover audio
-        cmd.extend([
-            "-filter_complex", video_filter,
-            "-map", "[v]",
-            "-map", "1:a",
-        ])
 
     cmd.extend([
         "-c:v", "libx264",

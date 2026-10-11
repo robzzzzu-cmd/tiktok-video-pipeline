@@ -138,6 +138,7 @@ To run this pipeline automatically on GitHub Actions, go to your repository on G
 | `REDDIT_CLIENT_ID` | Optional | Reddit Script App Client ID (public JSON is used if omitted). |
 | `REDDIT_CLIENT_SECRET` | Optional | Reddit Script App Client Secret. |
 | `BACKGROUND_VIDEO_FALLBACK_URL` | Optional | Hugging Face or direct MP4 URL to 1-hour satisfying restocking background video. Extracts a random clip on each run. |
+| `BACKGROUND_MUSIC_URL` | Optional | TikTok sound or direct audio URL for quiet background music (defaults to viral background soundtrack `son-original-7306937893019274016`). |
 | `YOUTUBE_COOKIES` | Optional | YouTube cookies export (`yt_cookies.txt`) for datacenter IP anti-bot bypass. |
 
 > [!TIP]
@@ -176,11 +177,17 @@ cp .env.example .env
 # Full generation and mock upload (dry-run)
 python -m src.main --dry-run
 
+# Generate love / relationship story
+python -m src.main --category love --dry-run
+
+# Generate family inheritance feud drama
+python -m src.main --category inheritance --dry-run
+
 # Generate video and skip uploading completely
 python -m src.main --skip-upload
 
 # Force story source and voice gender
-python -m src.main --source gemini --gender female --dry-run
+python -m src.main --source gemini --gender female --category entitled --dry-run
 python -m src.main --source reddit --subreddit AITAH --gender male --dry-run
 
 # Upload an existing generated video
@@ -199,6 +206,7 @@ pytest tests/ -v
 | Argument | Default | Choices | Description |
 | :--- | :---: | :---: | :--- |
 | `--source` | `auto` | `auto`, `reddit`, `gemini` | Source for story ingestion. |
+| `--category` | `auto` | `auto`, `love`, `inheritance`, `entitled`, `aitah` | Topic category for viral stories (relationships, inheritance feuds, roommate/entitled drama, AITA). |
 | `--gender` | `auto` | `auto`, `male`, `female` | Narrator voice gender. `auto` detects from story markers. |
 | `--subreddit` | `None` | Any subreddit name | Specific subreddit to fetch from. |
 | `--dry-run` | `False` | Flag | Simulates TikTok upload without contacting remote servers. |

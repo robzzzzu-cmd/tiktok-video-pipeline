@@ -71,10 +71,22 @@ class PipelineConfig(BaseModel):
     background_video_fallback_url: Optional[str] = Field(
         default_factory=lambda: os.getenv("BACKGROUND_VIDEO_FALLBACK_URL")
     )
+    background_music_url: str = Field(
+        default_factory=lambda: os.getenv(
+            "BACKGROUND_MUSIC_URL",
+            "https://www.tiktok.com/music/son-original-7306937893019274016",
+        )
+    )
+    bg_music_volume_db: str = Field(
+        default_factory=lambda: os.getenv("BG_MUSIC_VOLUME_DB", "-26dB")
+    )
 
     # Story & Voice Settings
     story_source: str = Field(
         default_factory=lambda: os.getenv("STORY_SOURCE", "auto")  # 'auto', 'reddit', 'gemini'
+    )
+    story_category: str = Field(
+        default_factory=lambda: os.getenv("STORY_CATEGORY", "auto")  # 'auto', 'love', 'inheritance', 'entitled', 'aitah'
     )
     subreddits: List[str] = Field(
         default_factory=lambda: [

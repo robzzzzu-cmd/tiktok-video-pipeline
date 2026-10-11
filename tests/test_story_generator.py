@@ -56,22 +56,31 @@ def test_trim_to_target_words():
 
 
 def test_curated_fallback_stories():
-    story_f = get_curated_fallback_story("female")
+    story_f = get_curated_fallback_story("female", category="inheritance")
     assert story_f.narrator_gender == "female"
     assert story_f.word_count > 150
     assert story_f.title != ""
 
-    story_m = get_curated_fallback_story("male")
+    story_m = get_curated_fallback_story("male", category="love")
     assert story_m.narrator_gender == "male"
     assert story_m.word_count > 150
     assert story_m.title != ""
 
 
+def test_curated_fallback_all_categories():
+    for cat in ["love", "inheritance", "entitled", "aitah"]:
+        story_f = get_curated_fallback_story("female", category=cat)
+        assert story_f.word_count > 100
+        story_m = get_curated_fallback_story("male", category=cat)
+        assert story_m.word_count > 100
+
+
 def test_clean_story_title():
     from src.story_generator import clean_story_title
-    assert "Walking out" in clean_story_title("AITA for walking out of my sister's wedding?")
+    # Preserves AITA and WIBTA prefixes as requested
+    assert "AITA for" in clean_story_title("AITA for walking out of my sister's wedding?")
     assert clean_story_title("[UPDATE] My roommate stole my car") == "My roommate stole my car"
-    assert "Told my parents" in clean_story_title("WIBTA if I told my parents the truth?")
+    assert "WIBTA if" in clean_story_title("WIBTA if I told my parents the truth?")
 
 
 def test_fetch_from_huggingface_reddit():

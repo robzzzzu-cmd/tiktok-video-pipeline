@@ -15,7 +15,11 @@ from src.config import config
 from src.story_generator import get_story
 from src.tts_engine import generate_voiceover
 from src.subtitles import generate_ass_subtitles
-from src.video_composer import download_background_clip, render_final_video
+from src.video_composer import (
+    download_background_clip,
+    download_background_music,
+    render_final_video,
+)
 from src.tiktok_uploader import publish_to_tiktok
 
 # Setup structured logging
@@ -31,6 +35,7 @@ def run_pipeline(
     source: str = "auto",
     gender: Optional[str] = None,
     subreddit: Optional[str] = None,
+    category: str = "auto",
     dry_run: bool = False,
     skip_upload: bool = False,
     keep_temp: bool = False,
@@ -46,7 +51,7 @@ def run_pipeline(
 
     logger.info("=========================================================")
     logger.info("Starting Automated TikTok Storytime Pipeline")
-    logger.info("Run ID: %s | Source: %s | Dry Run: %s", timestamp_str, source, dry_run)
+    logger.info("Run ID: %s | Source: %s | Category: %s | Dry Run: %s", timestamp_str, source, category, dry_run)
     logger.info("=========================================================")
 
     try:
@@ -56,6 +61,7 @@ def run_pipeline(
             source=source,
             gender_override=gender if gender != "auto" else None,
             preferred_subreddit=subreddit,
+            category=category,
         )
         logger.info("Story Title: '%s'", story.title)
         logger.info(
@@ -91,12 +97,18 @@ def run_pipeline(
         )
         logger.info("Subtitles written to %s", ass_path)
 
-        # Step 4: Background Video Download (yt-dlp partial section)
-        logger.info("[Step 4/5] Extracting matching random background segment from YouTube...")
+        # Step 4: Background Video & Quiet Background Music
+        logger.info("[Step 4/5] Extracting random background segment and preparing quiet background music...")
         raw_bg_path = temp_run_dir / f"background_{timestamp_str}.mp4"
         download_background_clip(
             target_duration=tts_result.duration_seconds,
             output_path=raw_bg_path,
+        )
+
+        bg_music_path = temp_run_dir / f"bg_music_{timestamp_str}.mp3"
+        download_background_music(
+            music_url=config.background_music_url,
+            output_path=bg_music_path,
         )
 
         # Step 5: Video Compositing (ffmpeg)
@@ -107,6 +119,7 @@ def run_pipeline(
             subtitles_ass=ass_path,
             output_video=final_video_path,
             duration=tts_result.duration_seconds,
+            background_music=bg_music_path,
         )
         logger.info("Final video successfully rendered: %s", final_video_path)
 
@@ -184,6 +197,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Optional specific subreddit to fetch story from.",
     )
     parser.add_argument(
+        "--category",
+        choices=["auto", "love", "inheritance", "entitled", "aitah"],
+        default="auto",
+        help="Story category: 'love' (relationships/dating), 'inheritance' (family inheritance/wills), 'entitled', or 'aitah'.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Execute the full pipeline and simulate TikTok upload without actual posting.",
@@ -226,6 +245,7 @@ def main() -> None:
             source=args.source,
             gender=args.gender,
             subreddit=args.subreddit,
+            category=args.category,
             dry_run=args.dry_run,
             skip_upload=args.skip_upload,
             keep_temp=args.keep_temp,

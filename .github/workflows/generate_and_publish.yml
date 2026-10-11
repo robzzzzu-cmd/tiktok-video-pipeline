@@ -24,6 +24,17 @@ on:
           - auto
           - male
           - female
+      category:
+        description: 'Story category (auto, love, inheritance, entitled, or aitah)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - love
+          - inheritance
+          - entitled
+          - aitah
       dry_run:
         description: 'Simulate TikTok upload without actual posting'
         required: false
@@ -86,11 +97,13 @@ jobs:
           TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID }}
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
           BACKGROUND_VIDEO_FALLBACK_URL: ${{ secrets.BACKGROUND_VIDEO_FALLBACK_URL }}
+          BACKGROUND_MUSIC_URL: ${{ secrets.BACKGROUND_MUSIC_URL }}
         run: |
           # Build command flags
           SOURCE="${{ inputs.source || 'auto' }}"
           GENDER="${{ inputs.gender || 'auto' }}"
-          FLAGS="--source $SOURCE --gender $GENDER"
+          CATEGORY="${{ inputs.category || 'auto' }}"
+          FLAGS="--source $SOURCE --gender $GENDER --category $CATEGORY"
 
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             FLAGS="$FLAGS --dry-run"
