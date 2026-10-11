@@ -343,10 +343,13 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             # Find file upload input element (supports both main page and embedded iframes)
             logger.info("Locating file upload element for: %s", video_path.name)
             file_input = None
+            upload_frame = None
+
             for _ in range(6):
                 try:
                     file_input = page.wait_for_selector('input[type="file"]', timeout=4000)
                     if file_input:
+                        upload_frame = page
                         break
                 except Exception:
                     pass
@@ -356,6 +359,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                         file_input = frame.query_selector('input[type="file"]')
                         if file_input:
                             logger.info("Found input[type='file'] inside frame: %s", frame.name or frame.url)
+                            upload_frame = frame
                             break
                     except Exception:
                         pass
@@ -373,71 +377,119 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             logger.info("Video file attached. Waiting for TikTok to process upload...")
             page.screenshot(path=str(screenshot_dir / "02_file_selected.png"))
 
-            # Wait for upload indicator / caption editor
-            page.wait_for_timeout(8000)
+            # Wait for upload indicator / caption editor to render
+            page.wait_for_timeout(10000)
 
-            # Locate caption editor container (supports both contenteditable and input/textarea across frames)
+            # Prioritize searching inside the active upload frame where file was selected
+            search_scopes = ([upload_frame] if upload_frame and upload_frame != page else []) + [page] + page.frames
+
+            # Dismiss any guide popups, cookie banners, or modal overlays
+            for scope in search_scopes:
+                for dismiss_selector in [
+                    'button:has-text("Got it")',
+                    'button:has-text("Close")',
+                    'button:has-text("Dismiss")',
+                    'div[role="dialog"] button',
+                    'button[aria-label="Close"]',
+                ]:
+                    try:
+                        btn = scope.query_selector(dismiss_selector)
+                        if btn:
+                            btn.click(timeout=1500, force=True)
+                    except Exception:
+                        pass
+
+            # Locate caption editor container (supports DraftEditor, contenteditable, textarea)
             caption_selector = (
                 'div[contenteditable="true"], div.DraftEditor-root, div.notranslate[contenteditable="true"], '
                 'textarea[placeholder*="caption"], div[data-placeholder]'
             )
-            caption_el = page.query_selector(caption_selector)
-            if not caption_el:
-                for frame in page.frames:
-                    caption_el = frame.query_selector(caption_selector)
+            caption_el = None
+            for scope in search_scopes:
+                try:
+                    caption_el = scope.query_selector(caption_selector)
                     if caption_el:
                         break
+                except Exception:
+                    pass
 
             if caption_el:
                 logger.info("Entering caption and viral hashtags into description editor...")
-                caption_el.click()
-                page.keyboard.press("Control+A")
-                page.keyboard.press("Backspace")
-                page.wait_for_timeout(500)
-                caption_el.fill(caption)
-                page.wait_for_timeout(1000)
+                try:
+                    caption_el.click(timeout=4000, force=True)
+                    page.keyboard.press("Control+A")
+                    page.keyboard.press("Backspace")
+                    page.wait_for_timeout(300)
+                    caption_el.fill(caption)
+                except Exception as e_fill:
+                    logger.info("Standard fill notice (%s); attempting evaluate text dispatch...", e_fill)
+                    try:
+                        active_scope = upload_frame or page
+                        active_scope.evaluate(
+                            """(text) => {
+                                const el = document.querySelector('div[contenteditable="true"], div.DraftEditor-root, textarea[placeholder*="caption"]');
+                                if (el) {
+                                    el.focus();
+                                    document.execCommand('selectAll', false, null);
+                                    document.execCommand('insertText', false, text);
+                                }
+                            }""",
+                            caption,
+                        )
+                    except Exception as e_ev:
+                        logger.warning("Could not set caption via evaluate: %s", e_ev)
             else:
                 logger.warning("Could not find dedicated caption element; checking generic inputs.")
 
             page.screenshot(path=str(screenshot_dir / "03_caption_entered.png"))
 
-            # Wait for Post button to become enabled (wait up to 75s for video upload/transcoding)
+            # Wait for Post button to become enabled (wait up to 90s for video transcoding)
             logger.info("Waiting for video upload to finalize and Post button to become enabled...")
             post_button = None
-            for attempt in range(25):
-                for target in [page] + page.frames:
-                    btn = (
-                        target.query_selector('button:has-text("Post")')
-                        or target.query_selector('button[data-e2e="post_video_button"]')
-                        or target.query_selector('div.btn-post button')
-                        or target.query_selector('button.btn-post')
-                    )
-                    if btn:
-                        is_disabled = (
-                            btn.get_attribute("disabled") is not None
-                            or btn.get_attribute("aria-disabled") == "true"
-                            or "disabled" in (btn.get_attribute("class") or "").lower()
+            for attempt in range(30):
+                for target in search_scopes:
+                    try:
+                        btn = (
+                            target.query_selector('button:has-text("Post")')
+                            or target.query_selector('button[data-e2e="post_video_button"]')
+                            or target.query_selector('div.btn-post button')
+                            or target.query_selector('button.btn-post')
                         )
-                        if not is_disabled:
-                            post_button = btn
-                            break
+                        if btn:
+                            is_disabled = (
+                                btn.get_attribute("disabled") is not None
+                                or btn.get_attribute("aria-disabled") == "true"
+                                or "disabled" in (btn.get_attribute("class") or "").lower()
+                            )
+                            if not is_disabled:
+                                post_button = btn
+                                break
+                    except Exception:
+                        pass
                 if post_button:
                     break
                 time.sleep(3)
 
             if post_button:
                 logger.info("Post button is enabled! Clicking Post...")
-                post_button.click()
-                page.wait_for_timeout(8000)
+                try:
+                    post_button.click(timeout=8000, force=True)
+                except Exception:
+                    post_button.click(force=True)
+                page.wait_for_timeout(10000)
                 page.screenshot(path=str(screenshot_dir / "04_after_post.png"))
 
                 # Check for post-upload modals or confirm dialogs
-                for confirm_label in ["Manage your posts", "View video", "Confirm", "Post anyway"]:
-                    confirm_el = page.query_selector(f'button:has-text("{confirm_label}")')
-                    if confirm_el:
-                        logger.info("Clicked confirmation dialog: '%s'", confirm_label)
-                        confirm_el.click()
-                        page.wait_for_timeout(3000)
+                for target in search_scopes:
+                    for confirm_label in ["Manage your posts", "View video", "Confirm", "Post anyway"]:
+                        try:
+                            confirm_el = target.query_selector(f'button:has-text("{confirm_label}")')
+                            if confirm_el:
+                                logger.info("Clicked confirmation dialog: '%s'", confirm_label)
+                                confirm_el.click(timeout=3000, force=True)
+                                page.wait_for_timeout(3000)
+                        except Exception:
+                            pass
 
                 page.screenshot(path=str(screenshot_dir / "05_final_published.png"))
                 logger.info("Playwright auto-publish workflow completed successfully.")
