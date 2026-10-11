@@ -68,7 +68,7 @@ def test_curated_fallback_stories():
 
 
 def test_curated_fallback_all_categories():
-    for cat in ["love", "inheritance", "entitled", "aitah"]:
+    for cat in ["love", "inheritance", "entitled", "revenge", "confession", "aitah"]:
         story_f = get_curated_fallback_story("female", category=cat)
         assert story_f.word_count > 100
         story_m = get_curated_fallback_story("male", category=cat)
@@ -81,9 +81,11 @@ def test_clean_story_title():
     assert "Am I the asshole for" in clean_story_title("AITA for walking out of my sister's wedding?", category="aitah")
     assert clean_story_title("[UPDATE] My roommate stole my car") == "My roommate stole my car"
     assert "Would I be the asshole if" in clean_story_title("WIBTA if I told my parents the truth?", category="aitah")
-    # Cleanly strips AITA prefixes for non-AITAH categories (love, inheritance, entitled)
+    # Cleanly strips AITA prefixes for non-AITAH categories (love, inheritance, entitled, revenge, confession)
     assert "Walking out" in clean_story_title("AITA for walking out of my sister's wedding?", category="love")
     assert "My sister sold" in clean_story_title("AITA for my sister sold our house?", category="inheritance")
+    assert "My boss tried" in clean_story_title("AITA for reporting my boss?", category="revenge")
+    assert "Finding out my DNA" in clean_story_title("AITA for finding out my DNA?", category="confession")
 
 
 def test_fetch_from_huggingface_reddit():
@@ -94,3 +96,14 @@ def test_fetch_from_huggingface_reddit():
         assert story.word_count >= 100
         assert story.source == "reddit_dataset"
         assert story.narrator_gender in ("male", "female")
+
+
+def test_build_caption():
+    from src.tiktok_uploader import build_caption
+    caption = build_caption("My family excluded me from vacation")
+    assert "My family excluded me from vacation" in caption
+    assert "#fyp" in caption
+    assert "#storytime" in caption
+    assert "#viral" in caption
+    assert "#asmr" in caption
+    assert "#restockasmrcompilation" in caption

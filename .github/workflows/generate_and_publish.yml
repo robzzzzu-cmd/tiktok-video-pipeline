@@ -25,7 +25,7 @@ on:
           - male
           - female
       category:
-        description: 'Story category (auto, love, inheritance, entitled, or aitah)'
+        description: 'Story category (auto, love, inheritance, entitled, revenge, confession, or aitah)'
         required: true
         default: 'auto'
         type: choice
@@ -34,6 +34,8 @@ on:
           - love
           - inheritance
           - entitled
+          - revenge
+          - confession
           - aitah
       dry_run:
         description: 'Simulate TikTok upload without actual posting'
@@ -125,6 +127,7 @@ jobs:
             output/*.mp4
             output/*.json
             temp/playwright_debug/*.png
+            temp/**/playwright_debug/*.png
           retention-days: 14
 
       - name: Publish Workflow Step Summary

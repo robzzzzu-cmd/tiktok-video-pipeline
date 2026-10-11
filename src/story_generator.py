@@ -59,7 +59,7 @@ ACRONYM_MAP = {
 }
 
 
-def clean_text_for_narration(text: str) -> str:
+def clean_text_for_narration(text: str, category: str = "auto") -> str:
     """Cleans raw story text for seamless, natural speech synthesis."""
     if not text:
         return ""
@@ -81,7 +81,14 @@ def clean_text_for_narration(text: str) -> str:
 
     # Expand common Reddit acronyms
     for pattern, replacement in ACRONYM_MAP.items():
-        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+        if category != "aitah" and pattern in (r"\bAITA\b", r"\bWIBTA\b"):
+            text = re.sub(pattern, "in the wrong", text, flags=re.IGNORECASE)
+        elif category != "aitah" and pattern == r"\bNTA\b":
+            text = re.sub(pattern, "in the right", text, flags=re.IGNORECASE)
+        elif category != "aitah" and pattern in (r"\bYTA\b", r"\bESH\b"):
+            text = re.sub(pattern, "in the wrong", text, flags=re.IGNORECASE)
+        else:
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
 
     # Remove trailing forum boilerplate endings so the video concludes on the dramatic punchline
     text = re.sub(
@@ -90,6 +97,11 @@ def clean_text_for_narration(text: str) -> str:
         text,
         flags=re.IGNORECASE,
     )
+
+    if category != "aitah":
+        # Remove any lingering "Am I the asshole" phrases anywhere in the narrative
+        text = re.sub(r"\b(?:Am I the asshole|would I be the asshole)\b\??", "am I in the wrong", text, flags=re.IGNORECASE)
+        text = re.sub(r"\b(?:an asshole|the asshole)\b", "in the wrong", text, flags=re.IGNORECASE)
 
     # Normalize multiple newlines and spaces
     text = re.sub(r"\n+", " ", text)
@@ -102,7 +114,7 @@ def clean_story_title(title: str, category: str = "auto") -> str:
     """Cleans raw Reddit titles into natural viral story hooks for TikTok narration.
 
     Preserves AITA prefixes when category is 'aitah'.
-    Strips AITA prefixes when category is 'love', 'inheritance', or 'entitled'.
+    Strips AITA prefixes when category is 'love', 'inheritance', 'entitled', 'revenge', or 'confession'.
     """
     if not title:
         return ""
@@ -113,9 +125,15 @@ def clean_story_title(title: str, category: str = "auto") -> str:
     title = re.sub(r"^(?:Cross-posted|Crosspost|X-post)[:\-–]\s*", "", title, flags=re.IGNORECASE)
 
     # If the story is explicitly in a non-AITAH category, strip any leading AITA tags
-    if category in ("love", "inheritance", "entitled"):
+    if category != "aitah":
         title = re.sub(
-            r"^(?:AITA|WIBTA|Am I the [aA]sshole|Would I be the [aA]sshole)\s+(?:for|if|to)?\s*",
+            r"^(?:AITA|WIBTA|Am I the [aA]sshole|Would I be the [aA]sshole)\s+(?:for|if|to|because)?\s*",
+            "",
+            title,
+            flags=re.IGNORECASE,
+        )
+        title = re.sub(
+            r"^(?:TIFU\s+by|TIFU\s+for|TIFU)[:\s]*",
             "",
             title,
             flags=re.IGNORECASE,
@@ -125,7 +143,7 @@ def clean_story_title(title: str, category: str = "auto") -> str:
     if title:
         title = title[0].upper() + title[1:]
 
-    return clean_text_for_narration(title)
+    return clean_text_for_narration(title, category=category)
 
 
 def detect_narrator_gender(text: str, title: str = "") -> str:
@@ -334,106 +352,155 @@ def fetch_from_reddit_praw(subreddit: str) -> Optional[Story]:
 STORY_CATEGORIES = {
     "love": {
         "name": "Love & Relationships",
-        "subreddits": ["relationship_advice", "dating_advice", "confession", "TrueOffMyChest"],
-        "keywords": ["husband", "wife", "boyfriend", "girlfriend", "fiancé", "fiancée", "cheating", "dating", "marriage", "wedding", "in love", "proposal"],
-        "gemini_theme": "A high-stakes love, dating, or relationship story: uncovering a secret about a partner, infidelity confession, wedding drama, or a life-changing romantic decision.",
+        "subreddits": ["relationship_advice", "dating_advice", "confession", "TrueOffMyChest", "survivinginfidelity"],
+        "keywords": [
+            "husband", "wife", "boyfriend", "girlfriend", "fiancé", "fiancée", "cheating",
+            "dating", "marriage", "wedding", "in love", "proposal", "burner phone", "gym bag",
+            "private investigator", "dowry", "rehearsal dinner", "retreat", "affair", "concierge"
+        ],
+        "gemini_theme": "A high-stakes love, dating, or relationship story: uncovering a secret about a partner (burner phone in gym bag, private investigator uncovering secret lifestyle, surprise dowry demand at rehearsal dinner, or wedding betrayal).",
     },
     "inheritance": {
         "name": "Family Inheritance & Wills",
-        "subreddits": ["familydrama", "EntitledPeople", "TrueOffMyChest", "pettyrevenge"],
-        "keywords": ["inheritance", "will", "estate", "passed away", "trust fund", "house", "parents left", "property", "heir", "executor"],
-        "gemini_theme": "A dramatic family inheritance battle: parents leaving the entire estate or house to the golden child, secret wills, or greedy relatives demanding the narrator's trust fund.",
+        "subreddits": ["familydrama", "EntitledPeople", "TrueOffMyChest", "pettyrevenge", "legaladvice"],
+        "keywords": [
+            "inheritance", "will", "estate", "passed away", "trust fund", "house", "parents left",
+            "property", "heir", "executor", "vacation fund", "sister's kids", "land", "cottage",
+            "tax assessor", "deed", "probate", "selling land"
+        ],
+        "gemini_theme": "A dramatic family inheritance battle: family vacation fund theft ($8,000 sister demand and father selling land), college trust fund drama, grandmother's estate tax dispute, or greedy relatives demanding the narrator's inheritance.",
     },
     "entitled": {
         "name": "Entitled People & Roommate Karma",
-        "subreddits": ["EntitledPeople", "pettyrevenge", "tifu", "TrueOffMyChest"],
-        "keywords": ["entitled", "roommate", "car", "towed", "stole", "police", "boss", "landlord"],
-        "gemini_theme": "An entitled family member, roommate, or in-law demanding the narrator's car, money, or belongings, resulting in immediate humiliating karma, towing, or legal payback.",
+        "subreddits": ["EntitledPeople", "pettyrevenge", "tifu", "TrueOffMyChest", "MaliciousCompliance"],
+        "keywords": [
+            "entitled", "roommate", "car", "towed", "stole", "police", "boss", "landlord",
+            "contractor", "proprietary", "source code", "logistics", "deposit", "villa", "neighbor",
+            "code enforcement", "operations froze"
+        ],
+        "gemini_theme": "An entitled person karma story: independent software contractor fired after refusing to hand over proprietary logistics source code (distribution network freeze), entitled neighbor towing classic car, roommate stealing a car, or landlord keeping a deposit.",
+    },
+    "revenge": {
+        "name": "Sweet & Petty Revenge",
+        "subreddits": ["pettyrevenge", "ProRevenge", "MaliciousCompliance", "tifu"],
+        "keywords": [
+            "revenge", "karma", "malicious compliance", "fired", "audit", "payback",
+            "landlord", "tenant", "boss", "demolish", "property line", "survey", "commission"
+        ],
+        "gemini_theme": "A satisfying revenge or malicious compliance story: corporate boss attempting to steal commission getting caught by an audit, or neighbor property dispute resulting in demolishing an encroachment.",
+    },
+    "confession": {
+        "name": "Shocking Confessions & Secrets",
+        "subreddits": ["confession", "TrueOffMyChest", "offmychest"],
+        "keywords": [
+            "confession", "secret", "never told", "guilt", "hidden", "dna",
+            "discovered", "truth", "swapped", "whistleblower", "chemicals", "culvert"
+        ],
+        "gemini_theme": "A shocking confession or dark secret: commercial DNA test revealing being switched at birth, or a safety inspector blowing the whistle on illegal toxic dumping.",
     },
     "aitah": {
         "name": "Classic Am I The Asshole",
         "subreddits": ["AITAH", "AmItheAsshole"],
-        "keywords": ["aita", "asshole", "am i the asshole"],
+        "keywords": ["aita", "asshole", "am i the asshole", "wibta"],
         "gemini_theme": "A classic moral dilemma where the narrator made a controversial but justified decision, dividing their family, starting with 'AITA for...'.",
     },
 }
 
 
 def fetch_from_huggingface_reddit(category: str = "auto") -> Optional[Story]:
-    """Fetches authentic viral Reddit stories from the 270,000+ public dataset.
+    """Fetches authentic viral Reddit stories across multi-million public datasets.
 
-    Filters the dataset for category keywords (love, inheritance, entitled, or aitah).
+    Searches across:
+    - SocialGrep/one-million-reddit-confessions (1,000,000 authentic confession and relationship posts)
+    - OsamaBsher/AITA-Reddit-Dataset (270,000+ authentic Reddit drama, inheritance, entitled, and moral stories)
+    Filters by category keywords and sanitizes text for seamless storytime narration.
     """
     cat_key = category if category in STORY_CATEGORIES else random.choice(list(STORY_CATEGORIES.keys()))
     cat_info = STORY_CATEGORIES[cat_key]
     keywords = cat_info["keywords"]
 
-    total_entries = 270000
+    # Choose primary and secondary dataset targets based on the category
+    dataset_targets = []
+    if cat_key in ("love", "confession"):
+        dataset_targets.append(("SocialGrep/one-million-reddit-confessions", 1000000, "selftext", "title"))
+        dataset_targets.append(("OsamaBsher/AITA-Reddit-Dataset", 270000, "text", "title"))
+    elif cat_key == "aitah":
+        dataset_targets.append(("OsamaBsher/AITA-Reddit-Dataset", 270000, "text", "title"))
+    else:  # inheritance, entitled, revenge
+        dataset_targets.append(("OsamaBsher/AITA-Reddit-Dataset", 270000, "text", "title"))
+        dataset_targets.append(("SocialGrep/one-million-reddit-confessions", 1000000, "selftext", "title"))
 
-    for _ in range(3):
-        random_offset = random.randint(100, total_entries - 50)
-        url = (
-            f"https://datasets-server.huggingface.co/rows?"
-            f"dataset=OsamaBsher/AITA-Reddit-Dataset&config=default&split=train&"
-            f"offset={random_offset}&length=25"
-        )
+    for ds_name, total_entries, text_field, title_field in dataset_targets:
+        for _ in range(4):
+            random_offset = random.randint(100, max(150, total_entries - 120))
+            url = (
+                f"https://datasets-server.huggingface.co/rows?"
+                f"dataset={ds_name}&config=default&split=train&"
+                f"offset={random_offset}&length=50"
+            )
 
-        try:
-            logger.info("Searching 270k+ public database for '%s' stories (offset %d)...", cat_info["name"], random_offset)
-            response = requests.get(url, headers={"User-Agent": config.reddit_user_agent}, timeout=15)
-            if response.status_code != 200:
-                continue
-
-            data = response.json()
-            rows = data.get("rows", [])
-
-            for item in rows:
-                row = item.get("row", {})
-                selftext = row.get("text", "")
-                raw_title = row.get("title", "")
-                score = row.get("score", 0)
-
-                if not selftext or len(selftext) < 400:
+            try:
+                logger.info(
+                    "Searching %s for '%s' stories (offset %d)...",
+                    ds_name,
+                    cat_info["name"],
+                    random_offset,
+                )
+                response = requests.get(url, headers={"User-Agent": config.reddit_user_agent}, timeout=15)
+                if response.status_code != 200:
                     continue
 
-                combined_lower = f"{raw_title.lower()} {selftext[:1200].lower()}"
+                data = response.json()
+                rows = data.get("rows", [])
 
-                # Match keywords if not generic aitah
-                if cat_key != "aitah":
-                    if not any(kw in combined_lower for kw in keywords):
+                for item in rows:
+                    row = item.get("row", {})
+                    selftext = row.get(text_field, "")
+                    raw_title = row.get(title_field, "")
+                    score = row.get("score", 0)
+
+                    if not selftext or len(selftext) < 400:
                         continue
 
-                cleaned_body = clean_text_for_narration(selftext)
-                words = cleaned_body.split()
-                if len(words) < config.target_words_min:
-                    continue
+                    combined_lower = f"{raw_title.lower()} {selftext[:1500].lower()}"
 
-                final_body = trim_to_target_words(
-                    cleaned_body, config.target_words_min, config.target_words_max
-                )
-                final_words = len(final_body.split())
-                cleaned_title = clean_story_title(raw_title)
-                gender = detect_narrator_gender(final_body, cleaned_title)
+                    # Match keywords if not generic aitah
+                    if cat_key != "aitah":
+                        if not any(kw.lower() in combined_lower for kw in keywords):
+                            continue
 
-                logger.info(
-                    "Retrieved authentic Reddit %s story: '%s' (score: %s, %d words)",
-                    cat_key,
-                    cleaned_title,
-                    score,
-                    final_words,
-                )
-                return Story(
-                    title=cleaned_title,
-                    body=final_body,
-                    narrator_gender=gender,
-                    source="reddit_dataset",
-                    word_count=final_words,
-                    subreddit=cat_info["subreddits"][0],
-                    tags=[f"r/{cat_info['subreddits'][0]}", "redditstories", cat_key],
-                )
+                    cleaned_body = clean_text_for_narration(selftext, category=cat_key)
+                    words = cleaned_body.split()
+                    if len(words) < config.target_words_min:
+                        continue
 
-        except Exception as e:
-            logger.warning("Failed to fetch from Reddit public dataset: %s", e)
+                    final_body = trim_to_target_words(
+                        cleaned_body, config.target_words_min, config.target_words_max
+                    )
+                    final_words = len(final_body.split())
+                    cleaned_title = clean_story_title(raw_title, category=cat_key)
+                    gender = detect_narrator_gender(final_body, cleaned_title)
+
+                    logger.info(
+                        "Retrieved authentic Reddit %s story: '%s' (score: %s, %d words, gender: %s)",
+                        cat_key,
+                        cleaned_title,
+                        score,
+                        final_words,
+                        gender,
+                    )
+                    return Story(
+                        title=cleaned_title,
+                        body=final_body,
+                        narrator_gender=gender,
+                        source="reddit_dataset",
+                        word_count=final_words,
+                        subreddit=cat_info["subreddits"][0],
+                        tags=[f"r/{cat_info['subreddits'][0]}", "redditstories", cat_key],
+                    )
+
+            except Exception as e:
+                logger.warning("Failed to fetch from %s: %s", ds_name, e)
 
     return None
 
@@ -796,6 +863,97 @@ def get_curated_fallback_story(
                 },
             ],
         },
+        "revenge": {
+            "female": [
+                {
+                    "title": "My corporate boss tried to steal my fifty-thousand-dollar commission, so I triggered a forensic audit",
+                    "body": (
+                        "I (28F) work as a senior enterprise account executive for a national medical supply company. "
+                        "For nine months, I worked eighty-hour weeks closing a multi-million-dollar contract with a hospital network. "
+                        "The deal carried a fifty-thousand-dollar performance commission explicitly outlined in my compensation plan. "
+                        "Two weeks before the commission payout, my Vice President, Marcus (45M), called me into his corner office. "
+                        "With a smug grin, Marcus informed me that because he had attended the final thirty-minute signing lunch, "
+                        "company policy dictated that he was credited as the primary closer, reducing my payout to a ten percent split. "
+                        "When I showed him my written calendar logs and ninety client emails, he smirked and said, 'Take it up with HR if you want, "
+                        "but remember who writes your annual performance review.' "
+                        "Instead of filing an emotional complaint with HR, I remembered Marcus's obsession with company expense accounts. "
+                        "Over the past year, Marcus had submitted dozens of lavish five-star dinners, luxury weekend car rentals, and golf resort packages, "
+                        "claiming they were 'client entertainment' for the hospital executives on my deal. "
+                        "I called the hospital's procurement director, verified they had never attended any of those dinners, and compiled a comprehensive "
+                        "dossier of falsified receipts and conflicting dates. I submitted the documentation directly to the chief financial officer "
+                        "and external compliance auditor. Within forty-eight hours, corporate security escorted Marcus out of the building. "
+                        "The audit uncovered over one hundred and twenty thousand dollars in fabricated expenses. "
+                        "The company restored my full fifty-thousand-dollar commission with an apology bonus, and Marcus was dismissed immediately."
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "My entitled neighbor tried to claim my driveway and called the cops, so I ordered a land survey",
+                    "body": (
+                        "I (29M) bought my first suburban home two years ago with a detached two-car garage and a paved side driveway. "
+                        "From the week I moved in, my neighbor, Frank (58M), treated my driveway as his personal overflow parking. "
+                        "He parked his boat trailer, his son's truck, and his lawnmowers across my property line. "
+                        "Last month, I finally hired a contractor to install a cedar privacy fence along the boundary. "
+                        "The moment my contractor began digging post holes, Frank stormed over screaming, threatening workers with a shovel, "
+                        "and called the police claiming I was trespassing on his grandfathered easement. "
+                        "The responding officers told us it was a civil boundary dispute and halted the fence installation until a certified boundary survey was conducted. "
+                        "Frank stood in his yard grinning, bragging to other neighbors that he was going to take me to court and take half my yard. "
+                        "I hired a licensed civil engineering firm to conduct a precision GPS boundary survey of the property pins. "
+                        "Three days later, the surveyor handed me the finalized blueprint with a stunned look on his face. "
+                        "Not only was my entire driveway undeniably on my deed, but Frank's two-story brick garage and concrete patio had been built four feet "
+                        "over my legal property line thirty years ago without permits. "
+                        "My attorney sent Frank a certified demand letter: he had thirty days to demolish the encroachment or purchase the four-foot strip "
+                        "at seventy-five thousand dollars cash. Frank broke down in tears, begging me not to force him to demolish his garage. "
+                        "I had my privacy fence built right up to the true pin, Frank had to pay twenty thousand dollars to alter his roofline, "
+                        "and he has not made eye contact with me since."
+                    ),
+                },
+            ],
+        },
+        "confession": {
+            "female": [
+                {
+                    "title": "A commercial DNA test revealed my best friend and I were switched at birth",
+                    "body": (
+                        "I (26F) have been inseparable best friends with Maya (26F) since our first day of kindergarten. "
+                        "Our families lived three blocks apart, and our parents always joked that we looked more like each other's sisters than our actual families. "
+                        "For Christmas last year, Maya's brother gifted everyone in both families popular direct-to-consumer DNA ancestry kits for fun. "
+                        "We spit into the plastic tubes, mailed them off, and forgot about them for six weeks. "
+                        "On a Tuesday afternoon, my phone blew up with frantic calls from Maya. She was hyperventilating so hard she could barely speak. "
+                        "When I opened my portal results, my entire world turned upside down: Maya's parents were listed as my biological mother and father "
+                        "with a ninety-nine point nine percent match, while my parents were Maya's biological parents. "
+                        "We were born on the exact same morning, ninety minutes apart, at a small community hospital that has since closed down. "
+                        "In the chaos of a severe winter blizzard that night, a tired maternity nurse had accidentally switched our hospital bassinets. "
+                        "For twenty-six years, both sets of parents had lovingly raised each other's biological daughters without the slightest suspicion. "
+                        "When we gathered both families around our living room table to break the news, the room was completely silent for five full minutes "
+                        "before both of our mothers burst into uncontrollable tears. "
+                        "It felt like the ground beneath our lives had shattered. But after months of counseling, both families agreed not to let it divide us. "
+                        "Maya and I are now legally recognized as sisters, and we celebrate holidays together as one giant, unconventional family."
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "I was the safety inspector who uncovered my company dumping chemicals — here is why I blew the whistle",
+                    "body": (
+                        "I (31M) worked for four years as an environmental compliance specialist for a regional manufacturing plant. "
+                        "My job was to ensure our industrial cleaning solvents and wastewater met state environmental protection standards before treatment. "
+                        "Six months ago, during an unscheduled late-night facility inspection, I noticed an unmapped PVC bypass valve concealed behind the storage silos. "
+                        "The valve was connected to an automated pump that activated at 2 AM every Tuesday and Thursday, routing untreated chemical sludge directly "
+                        "into the municipal storm drainage culvert leading straight to the local river. "
+                        "When I confronted our plant director with water toxicity logs, he slammed his office door and told me to delete the inspection file immediately. "
+                        "He offered me a thirty-thousand-dollar promotion bonus to look the other way, warning me that whistleblowers never work in the sector again. "
+                        "I couldn't sleep for two weeks thinking about the families and farms downstream. "
+                        "Instead of deleting the file, I wore a covert pinhole camera, gathered certified water sample vials, and documented eighteen separate bypass discharge events. "
+                        "I handed the complete digital evidence drive to federal EPA investigators and the Department of Justice. "
+                        "Federal marshals raided the facility the following month. The company was hit with twenty-two million dollars in environmental criminal fines, "
+                        "the plant director was indicted, and I was granted federal whistleblower protection. "
+                        "I lost my job at the plant, but I protected thousands of people in my hometown, and I would do it again in a heartbeat."
+                    ),
+                },
+            ],
+        },
         "aitah": {
             "female": [
                 {
@@ -845,7 +1003,7 @@ def get_curated_fallback_story(
     chosen = random.choice(gender_stories) if isinstance(gender_stories, list) else gender_stories
 
     cleaned_title = clean_story_title(chosen["title"], category=cat_key)
-    cleaned_body = clean_text_for_narration(chosen["body"])
+    cleaned_body = clean_text_for_narration(chosen["body"], category=cat_key)
 
     return Story(
         title=cleaned_title,
@@ -869,6 +1027,8 @@ def get_story(
     - 'love': Love & Relationship drama (cheating, secret phones, wedding confessions)
     - 'inheritance': Family inheritance & estate battles (wills, trusts, vacation drama)
     - 'entitled': Entitled people & roommate karma (logistics systems, towing cars, deposit payback)
+    - 'revenge': Sweet & petty revenge, corporate audits, property encroachments
+    - 'confession': Shocking confessions, birth switches, whistleblower disclosures
     - 'aitah': Classic AITAH moral conflicts
 
     Args:
@@ -883,8 +1043,8 @@ def get_story(
     elif config.story_category and config.story_category != "auto" and config.story_category in STORY_CATEGORIES:
         selected_cat = config.story_category
     else:
-        # Rotate dynamically across all diverse categories (weighted towards rich drama)
-        selected_cat = random.choice(["love", "inheritance", "entitled", "aitah"])
+        # Rotate dynamically across all diverse categories
+        selected_cat = random.choice(["love", "inheritance", "entitled", "revenge", "confession", "aitah"])
 
     cat_info = STORY_CATEGORIES[selected_cat]
     logger.info("Selected story category: '%s' (%s)", selected_cat, cat_info["name"])
@@ -915,14 +1075,13 @@ def get_story(
                 story.narrator_gender = gender_override
             return story
 
-    # 4. If category is 'aitah', try the 270k AITAH dataset
-    # (Note: we ONLY query AITAH dataset if category is aitah, to prevent AITA hijacking other categories!)
-    if selected_cat == "aitah":
-        story = fetch_from_huggingface_reddit(category="aitah")
-        if story:
-            if gender_override:
-                story.narrator_gender = gender_override
-            return story
+    # 4. Multi-Million Public Reddit Datasets (filtered by category keywords)
+    logger.info("Searching public Reddit datasets for authentic '%s' stories...", selected_cat)
+    dataset_story = fetch_from_huggingface_reddit(category=selected_cat)
+    if dataset_story:
+        if gender_override:
+            dataset_story.narrator_gender = gender_override
+        return dataset_story
 
     # 5. Gemini fallback if configured and not yet tried
     if config.gemini_api_key:

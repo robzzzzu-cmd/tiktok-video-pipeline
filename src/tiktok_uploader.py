@@ -17,13 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 def build_caption(title: str, hashtags: Optional[list] = None) -> str:
-    """Builds a TikTok caption combining the title and viral hashtags (keeping within length limits)."""
+    """Builds a TikTok caption combining the story title as description and viral hashtags."""
     tags = hashtags or config.hashtags
     tags_str = " ".join(tags)
-    # Maximum TikTok caption length is typically 2200 characters, but 150-200 chars is ideal
     clean_title = title.strip()
-    if len(clean_title) > 100:
-        clean_title = clean_title[:97] + "..."
+    if len(clean_title) > 150:
+        clean_title = clean_title[:147] + "..."
     return f"{clean_title}\n\n{tags_str}"
 
 
@@ -201,8 +200,10 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     "Chrome/124.0.0.0 Safari/537.36"
                 ),
             )
+            # Remove navigator.webdriver flag
+            context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
-            # Set TikTok session cookies
+            # Set TikTok authentication cookies
             context.add_cookies([
                 {
                     "name": "sessionid",
@@ -220,70 +221,139 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     "httpOnly": True,
                     "secure": True,
                 },
+                {
+                    "name": "sid_tt",
+                    "value": session_id,
+                    "domain": ".tiktok.com",
+                    "path": "/",
+                    "httpOnly": True,
+                    "secure": True,
+                },
             ])
 
             page = context.new_page()
-            upload_url = "https://www.tiktok.com/creator-center/upload"
+            upload_url = "https://www.tiktok.com/tiktokstudio/upload"
             logger.info("Navigating to %s...", upload_url)
-            page.goto(upload_url, wait_until="networkidle", timeout=45000)
+            try:
+                page.goto(upload_url, wait_until="networkidle", timeout=50000)
+            except Exception as nav_e:
+                logger.info("Page navigation completed with status: %s", nav_e)
 
-            # Check if logged in or redirected to login
+            page.screenshot(path=str(screenshot_dir / "01_page_loaded.png"))
+
+            # Check if redirected to login
             if "login" in page.url.lower():
-                logger.error("Session cookie appears expired; redirected to login page: %s", page.url)
-                page.screenshot(path=str(screenshot_dir / "login_redirect.png"))
+                logger.error("Session cookie appears expired or invalid; redirected to login: %s", page.url)
+                page.screenshot(path=str(screenshot_dir / "01_login_redirect.png"))
                 browser.close()
                 return False
 
-            # Find file upload input element
-            logger.info("Attaching video file: %s", video_path)
-            file_input = page.wait_for_selector('input[type="file"]', timeout=30000)
+            # Find file upload input element (supports both main page and embedded iframes)
+            logger.info("Locating file upload element for: %s", video_path.name)
+            file_input = None
+            for _ in range(6):
+                try:
+                    file_input = page.wait_for_selector('input[type="file"]', timeout=4000)
+                    if file_input:
+                        break
+                except Exception:
+                    pass
+
+                for frame in page.frames:
+                    try:
+                        file_input = frame.query_selector('input[type="file"]')
+                        if file_input:
+                            logger.info("Found input[type='file'] inside frame: %s", frame.name or frame.url)
+                            break
+                    except Exception:
+                        pass
+                if file_input:
+                    break
+                time.sleep(2)
+
             if not file_input:
-                logger.error("Could not find file input element on page.")
+                logger.error("Could not find file input element on page or iframes.")
                 page.screenshot(path=str(screenshot_dir / "missing_file_input.png"))
                 browser.close()
                 return False
 
             file_input.set_input_files(str(video_path))
-            logger.info("Video file selected. Waiting for upload to process...")
+            logger.info("Video file attached. Waiting for TikTok to process upload...")
+            page.screenshot(path=str(screenshot_dir / "02_file_selected.png"))
 
             # Wait for upload indicator / caption editor
             page.wait_for_timeout(8000)
 
-            # Locate caption editor container (supports both contenteditable and input/textarea)
+            # Locate caption editor container (supports both contenteditable and input/textarea across frames)
             caption_selector = (
-                'div[contenteditable="true"], div.DraftEditor-root, textarea[placeholder*="caption"]'
+                'div[contenteditable="true"], div.DraftEditor-root, div.notranslate[contenteditable="true"], '
+                'textarea[placeholder*="caption"], div[data-placeholder]'
             )
             caption_el = page.query_selector(caption_selector)
+            if not caption_el:
+                for frame in page.frames:
+                    caption_el = frame.query_selector(caption_selector)
+                    if caption_el:
+                        break
+
             if caption_el:
-                logger.info("Entering caption and hashtags...")
+                logger.info("Entering caption and viral hashtags into description editor...")
                 caption_el.click()
-                # Clear existing text if any
                 page.keyboard.press("Control+A")
                 page.keyboard.press("Backspace")
+                page.wait_for_timeout(500)
                 caption_el.fill(caption)
+                page.wait_for_timeout(1000)
             else:
-                logger.warning("Could not find dedicated caption element; trying generic input.")
+                logger.warning("Could not find dedicated caption element; checking generic inputs.")
 
-            page.wait_for_timeout(5000)
+            page.screenshot(path=str(screenshot_dir / "03_caption_entered.png"))
 
-            # Locate and click Post button
-            post_button = (
-                page.query_selector('button:has-text("Post")')
-                or page.query_selector('button[data-e2e="post_video_button"]')
-                or page.query_selector('div.btn-post button')
-            )
+            # Wait for Post button to become enabled (wait up to 75s for video upload/transcoding)
+            logger.info("Waiting for video upload to finalize and Post button to become enabled...")
+            post_button = None
+            for attempt in range(25):
+                for target in [page] + page.frames:
+                    btn = (
+                        target.query_selector('button:has-text("Post")')
+                        or target.query_selector('button[data-e2e="post_video_button"]')
+                        or target.query_selector('div.btn-post button')
+                        or target.query_selector('button.btn-post')
+                    )
+                    if btn:
+                        is_disabled = (
+                            btn.get_attribute("disabled") is not None
+                            or btn.get_attribute("aria-disabled") == "true"
+                            or "disabled" in (btn.get_attribute("class") or "").lower()
+                        )
+                        if not is_disabled:
+                            post_button = btn
+                            break
+                if post_button:
+                    break
+                time.sleep(3)
 
             if post_button:
-                logger.info("Clicking Post button...")
+                logger.info("Post button is enabled! Clicking Post...")
                 post_button.click()
-                page.wait_for_timeout(10000)
-                page.screenshot(path=str(screenshot_dir / "after_post.png"))
-                logger.info("Post button clicked successfully.")
+                page.wait_for_timeout(8000)
+                page.screenshot(path=str(screenshot_dir / "04_after_post.png"))
+
+                # Check for post-upload modals or confirm dialogs
+                for confirm_label in ["Manage your posts", "View video", "Confirm", "Post anyway"]:
+                    confirm_el = page.query_selector(f'button:has-text("{confirm_label}")')
+                    if confirm_el:
+                        logger.info("Clicked confirmation dialog: '%s'", confirm_label)
+                        confirm_el.click()
+                        page.wait_for_timeout(3000)
+
+                page.screenshot(path=str(screenshot_dir / "05_final_published.png"))
+                logger.info("Playwright auto-publish workflow completed successfully.")
                 browser.close()
                 return True
             else:
-                logger.warning("Post button not found directly.")
-                page.screenshot(path=str(screenshot_dir / "missing_post_button.png"))
+                logger.warning("Post button was not enabled within the timeout.")
+                page.screenshot(path=str(screenshot_dir / "post_timeout.png"))
                 browser.close()
                 return False
 

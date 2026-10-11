@@ -87,7 +87,7 @@ class PipelineConfig(BaseModel):
         default_factory=lambda: os.getenv("STORY_SOURCE", "auto")  # 'auto', 'reddit', 'gemini'
     )
     story_category: str = Field(
-        default_factory=lambda: os.getenv("STORY_CATEGORY", "auto")  # 'auto', 'love', 'inheritance', 'entitled', 'aitah'
+        default_factory=lambda: os.getenv("STORY_CATEGORY", "auto")  # 'auto', 'love', 'inheritance', 'entitled', 'revenge', 'confession', 'aitah'
     )
     subreddits: List[str] = Field(
         default_factory=lambda: [
@@ -136,12 +136,13 @@ class PipelineConfig(BaseModel):
     # Publishing Metadata
     hashtags: List[str] = Field(
         default_factory=lambda: [
-            "#storytime",
-            "#redditstories",
-            "#asmr",
-            "#restock",
-            "#satisfying",
             "#fyp",
+            "#storytime",
+            "#viral",
+            "#asmr",
+            "#restockasmrcompilation",
+            "#satisfying",
+            "#redditstories",
         ]
     )
 
