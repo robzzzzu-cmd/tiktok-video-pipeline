@@ -274,6 +274,66 @@ def fetch_from_reddit_praw(subreddit: str) -> Optional[Story]:
     return None
 
 
+def fetch_from_huggingface_reddit() -> Optional[Story]:
+    """Fetches authentic viral Reddit AITAH stories from the 270,000+ public dataset.
+
+    Requires NO Reddit API keys, NO secrets, and NO authentication.
+    """
+    total_entries = 270000
+    random_offset = random.randint(100, total_entries - 20)
+    url = (
+        f"https://datasets-server.huggingface.co/rows?"
+        f"dataset=OsamaBsher/AITA-Reddit-Dataset&config=default&split=train&"
+        f"offset={random_offset}&length=10"
+    )
+
+    try:
+        logger.info("Fetching real viral Reddit stories from 270k+ public AITAH database (offset %d)...", random_offset)
+        response = requests.get(url, headers={"User-Agent": config.reddit_user_agent}, timeout=15)
+        if response.status_code != 200:
+            logger.warning("HuggingFace dataset endpoint returned HTTP %d", response.status_code)
+            return None
+
+        data = response.json()
+        rows = data.get("rows", [])
+
+        for item in rows:
+            row = item.get("row", {})
+            selftext = row.get("text", "")
+            title = row.get("title", "")
+            score = row.get("score", 0)
+
+            if not selftext or len(selftext) < 400:
+                continue
+
+            cleaned_body = clean_text_for_narration(selftext)
+            words = cleaned_body.split()
+            if len(words) < config.target_words_min:
+                continue
+
+            final_body = trim_to_target_words(
+                cleaned_body, config.target_words_min, config.target_words_max
+            )
+            final_words = len(final_body.split())
+            gender = detect_narrator_gender(final_body, title)
+
+            logger.info("Retrieved authentic Reddit story: '%s' (score: %s, %d words)", title, score, final_words)
+            return Story(
+                title=clean_text_for_narration(title),
+                body=final_body,
+                narrator_gender=gender,
+                source="reddit_dataset",
+                word_count=final_words,
+                subreddit="AITAH",
+                tags=["r/AITAH", "redditstories"],
+            )
+
+    except Exception as e:
+        logger.warning("Failed to fetch from Reddit public dataset: %s", e)
+
+    return None
+
+
 def generate_with_gemini(gender_override: Optional[str] = None) -> Optional[Story]:
     """Generates an engaging, viral Reddit-style story using Google Gemini API (`google-genai`)."""
     if not config.gemini_api_key:
@@ -436,13 +496,20 @@ def get_story(
                 story.narrator_gender = gender_override
             return story
 
-    # 3. Gemini fallback if Reddit was attempted or auto
+    # 3. Autonomous Reddit Dataset (270,000+ real posts, requires NO API keys or credentials)
+    story = fetch_from_huggingface_reddit()
+    if story:
+        if gender_override:
+            story.narrator_gender = gender_override
+        return story
+
+    # 4. Gemini fallback if configured
     if source in ("auto", "reddit") and config.gemini_api_key:
         logger.info("Attempting Gemini generation as fallback...")
         gemini_story = generate_with_gemini(gender_override)
         if gemini_story:
             return gemini_story
 
-    # 4. Reliable built-in fallback story
+    # 5. Reliable built-in curated story
     logger.warning("Using curated fallback story to maintain 100% pipeline uptime.")
     return get_curated_fallback_story(gender_override)

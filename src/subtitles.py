@@ -104,13 +104,14 @@ def generate_ass_subtitles(
     outline_color: str = config.outline_color_ass,
     font_name: str = config.font_name,
     font_size: int = config.font_size,
+    alignment: int = config.subtitle_alignment,
     margin_v: int = config.subtitle_margin_v,
     outline_width: int = config.outline_width,
     shadow: int = config.shadow_depth,
 ) -> Path:
     """Generates an Advanced SubStation Alpha (.ass) subtitle file with word-by-word highlights.
 
-    Each 2-3 word chunk stays on screen while individual spoken words pop and highlight in real-time.
+    Subtitles are centered directly in the middle of the screen (Alignment 5) for high-engagement viewing.
     """
     output_ass_path.parent.mkdir(parents=True, exist_ok=True)
     chunks = build_chunks(word_timings, max_words=3, max_chars=20)
@@ -126,7 +127,7 @@ PlayResY: {config.video_height}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{font_size},{primary_color},&H000000FF&,{outline_color},&H80000000&,-1,0,0,0,100,100,1.5,0,1,{outline_width},{shadow},2,40,40,{margin_v},1
+Style: Default,{font_name},{font_size},{primary_color},&H000000FF&,{outline_color},&H80000000&,-1,0,0,0,100,100,1.5,0,1,{outline_width},{shadow},{alignment},40,40,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

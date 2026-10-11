@@ -53,31 +53,32 @@ flowchart TD
 
 ## ✨ Key Features
 
-1. **Smart Story Ingestion & Text Preprocessing (`src/story_generator.py`)**:
-   - Ingests top dramatic stories from Reddit (`r/AITAH`, `r/relationship_advice`, `r/tifu`, `r/AmItheAsshole`, `r/confession`) using public JSON endpoints or PRAW.
-   - Generates original viral stories via **Google Gemini API** (`google-genai`).
-   - Automatically cleans markdown formatting, URLs, and Reddit acronyms (`AITA` $\to$ *"Am I the asshole"*, `MIL` $\to$ *"mother-in-law"*, `SIL` $\to$ *"sister-in-law"*).
-   - Automatically detects narrator gender (`[24M]`, `[28F]`, `I am a 25 year old woman`, contextual pronouns) with 50/50 fallback if ambiguous.
-   - Strictly enforces word targets (450–520 words) for an exact ~3-minute video at ~155 WPM.
+1. **Zero-Credentials Autonomous Story Engine (`src/story_generator.py`)**:
+   - **No Reddit Client ID or Secret required!** The pipeline directly queries the serverless 270,000+ public Reddit AITAH dataset with zero authentication or API setup.
+   - Also supports live Reddit JSON endpoints, optional PRAW credentials, or original story generation via **Google Gemini 2.5 Flash** (`google-genai`).
+   - Automatically cleans markdown formatting, URLs, and expands Reddit abbreviations (`AITA` $\to$ *"Am I the asshole"*, `MIL` $\to$ *"mother-in-law"*, `SIL` $\to$ *"sister-in-law"*).
+   - Automatically detects narrator gender (`[24M]`, `[28F]`, `I am a 30 year old man`, contextual pronouns) with 50/50 fallback if ambiguous.
+   - Strictly enforces target word counts (450–520 words) for an exact ~3-minute video.
 
 2. **Ultra-Realistic Neural TTS (`src/tts_engine.py`)**:
-   - Powered by `edge-tts` (zero cost, zero API keys required).
+   - Powered by `edge-tts` (zero cost, zero API keys required) with `boundary="WordBoundary"` precision streaming.
    - Voice Profiles:
      - **Male**: `en-US-ChristopherNeural` (fallback: `en-US-GuyNeural`)
      - **Female**: `en-US-JennyNeural` (fallback: `en-US-AriaNeural`)
-   - Emits exact word-level timing boundaries for frame-accurate caption synchronization.
+   - Emits exact word-level timing boundaries for frame-accurate caption synchronization, with an automatic proportional timing estimator backup.
 
-3. **Dynamic Word-by-Word Animated Subtitles (`src/subtitles.py`)**:
+3. **Viral Animated Subtitles Centered in the Middle (`src/subtitles.py`)**:
    - Produces formatted **Advanced SubStation Alpha (`.ass`)** subtitles.
-   - Compact 2–3 word chunks centered in the lower-middle frame (`MarginV: 300`).
+   - Positioned **directly in the center of the screen** (`Alignment: 5`, vertical middle center at $y=960$).
    - High-retention TikTok visual styling:
-     - Font: **Montserrat ExtraBold** (bundled in repository).
+     - Font: **Montserrat ExtraBold** (76pt, bold uppercase).
      - Color: Primary white (`&H00FFFFFF&`), strong black border outline (`&H00000000&`, thickness: 5), subtle drop shadow.
-     - **Active Word Animation**: Spoken words highlight in **Bright Yellow** (`&H0000FFFF&`) with a pop scale (`\fscx106\fscy106`).
+     - **Active Word Animation**: Spoken words dynamically pop and highlight in **Bright Yellow** (`&H0000FFFF&`) with scale pop (`\fscx106\fscy106`).
 
 4. **Efficient YouTube Background Video Slicing (`src/video_composer.py`)**:
    - Source Video: [Satisfying Restocking ASMR compilation (1 hour)](https://www.youtube.com/watch?v=9or33zyZJgM).
    - Extracts only the needed random 3-minute clip (180–195s) with `yt-dlp --download-sections "*START-END"`. **Never downloads the full 1-hour video file**, saving bandwidth and running within minutes on GitHub Actions.
+   - **Cloud Runner Anti-Bot Handling**: On cloud runners (GitHub Actions / Azure), YouTube blocks datacenter IPs with *"Sign in to confirm you're not a bot"*. To enable YouTube downloads in GitHub Actions, simply add your YouTube session cookies in `YOUTUBE_COOKIES` secret. If no cookies are provided, the compositor automatically switches to high-speed satisfying animated dynamic spiral visuals so the pipeline never breaks!
    - Centers and crops to **vertical 9:16 (1080x1920 at 30fps)**.
    - Mixes audio: primary voiceover + background ASMR lowered to **-22dB**.
 

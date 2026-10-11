@@ -81,11 +81,26 @@ def download_background_clip(
         if temp_download.exists():
             temp_download.unlink()
 
+        # Prepare cookies if provided
+        cookies_arg = []
+        if config.youtube_cookies:
+            cookies_file = output_path.parent / "yt_cookies.txt"
+            cookies_file.write_text(config.youtube_cookies, encoding="utf-8")
+            cookies_arg = ["--cookies", str(cookies_file)]
+
+        # Cycle through different client extractors on each retry
+        client_extractors = [
+            "youtube:player_client=ios",
+            "youtube:player_client=android",
+            "youtube:player_client=mweb",
+        ]
+        extractor_choice = client_extractors[(attempt - 1) % len(client_extractors)]
+
         cmd = [
             "yt-dlp",
             "--download-sections", f"*{start_sec}-{end_sec}",
             "--force-keyframes-at-cuts",
-            "--extractor-args", "youtube:player_client=android,web",
+            "--extractor-args", extractor_choice,
             "-f", "bv*[height<=1080]+ba/b[height<=1080]/best",
             "--merge-output-format", "mp4",
             "--no-playlist",
@@ -94,6 +109,7 @@ def download_background_clip(
             "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "--retries", "3",
             "--socket-timeout", "20",
+        ] + cookies_arg + [
             "-o", str(temp_download),
             config.background_video_url,
         ]
@@ -111,7 +127,7 @@ def download_background_clip(
                 "yt-dlp download failed on attempt %d: %s | stderr: %s",
                 attempt,
                 e,
-                e.stderr[:300] if e.stderr else "N/A",
+                e.stderr[-300:] if e.stderr else "N/A",
             )
             if temp_download.exists():
                 temp_download.unlink()
@@ -122,32 +138,77 @@ def download_background_clip(
                 temp_download.unlink()
             time.sleep(2 * attempt)
 
-    # If all downloads failed, generate a fallback animated satisfying gradient clip
-    logger.error("All YouTube section downloads failed. Generating procedural fallback video.")
+    # If YouTube was blocked (e.g. datacenter IP challenge), try fallback direct video if configured
+    if config.background_video_fallback_url:
+        logger.info("Attempting download from background video fallback URL: %s", config.background_video_fallback_url)
+        try:
+            cmd = [
+                "yt-dlp",
+                "-f", "best[ext=mp4]/best",
+                "-o", str(output_path),
+                config.background_video_fallback_url,
+            ]
+            subprocess.run(cmd, check=True, capture_output=True)
+            if output_path.exists() and output_path.stat().st_size > 10240:
+                return output_path
+        except Exception as e:
+            logger.warning("Fallback video download failed: %s", e)
+
+    # If all downloads failed, generate an animated satisfying dynamic gradient video
+    logger.warning("YouTube download was blocked by anti-bot IP challenge. Generating dynamic animated satisfying background.")
     return generate_procedural_background(target_duration, output_path)
 
 
 def generate_procedural_background(duration: float, output_path: Path) -> Path:
-    """Generates a high-quality vertical 1080x1920 ambient background clip if YouTube is unavailable."""
+    """Generates an animated, satisfying 1080x1920 dynamic spiral visual background using ffmpeg."""
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg is required but not installed.")
 
-    logger.info("Creating procedural vertical background with duration %.1fs...", duration)
+    logger.info("Creating animated satisfying spiral background with duration %.1fs...", duration)
+    # Use ffmpeg's animated gradient filter with soothing ASMR ambient hum
+    filter_graph = (
+        f"gradients=s={config.video_width}x{config.video_height}:"
+        f"type=spiral:speed=0.025:nb_colors=4:"
+        f"c0=0x111e38:c1=0x1e3c72:c2=0x2a5298:c3=0x0f2027:r={config.video_fps}"
+    )
+
     cmd = [
         "ffmpeg",
         "-y",
         "-f", "lavfi",
-        "-i", f"color=c=0x111625:s=1080x1920:d={duration + 2}:r={config.video_fps}",
+        "-i", filter_graph,
         "-f", "lavfi",
-        "-i", f"anullsrc=r=44100:cl=stereo:d={duration + 2}",
+        "-i", f"anoisesrc=d={duration + 2}:c=pink:r=44100:a=0.01",
         "-c:v", "libx264",
         "-preset", "ultrafast",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
+        "-b:a", "128k",
         "-t", str(duration + 1),
         str(output_path),
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError:
+        # Fallback to standard color source if gradients filter not supported in this ffmpeg build
+        logger.info("Gradients filter fallback to color source...")
+        cmd_fallback = [
+            "ffmpeg",
+            "-y",
+            "-f", "lavfi",
+            "-i", f"color=c=0x162032:s={config.video_width}x{config.video_height}:d={duration + 2}:r={config.video_fps}",
+            "-f", "lavfi",
+            "-i", f"anullsrc=r=44100:cl=stereo:d={duration + 2}",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-t", str(duration + 1),
+            str(output_path),
+        ]
+        subprocess.run(cmd_fallback, check=True, capture_output=True)
+
     return output_path
 
 

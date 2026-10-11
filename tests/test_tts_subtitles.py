@@ -56,6 +56,8 @@ def test_generate_ass_subtitles(tmp_path: Path):
     assert "HELLO" in content
     assert "TIKTOK" in content
     assert "WORLD" in content
+    # Verify alignment 5 (middle center) is configured in Style
+    assert ",5,40,40," in content
 
 
 def test_estimate_word_timings_from_text():

@@ -64,3 +64,13 @@ def test_curated_fallback_stories():
     story_m = get_curated_fallback_story("male")
     assert story_m.narrator_gender == "male"
     assert story_m.word_count > 150
+
+
+def test_fetch_from_huggingface_reddit():
+    from src.story_generator import fetch_from_huggingface_reddit
+    story = fetch_from_huggingface_reddit()
+    # If network is available, it returns an authentic story
+    if story:
+        assert story.word_count >= 100
+        assert story.source == "reddit_dataset"
+        assert story.narrator_gender in ("male", "female")

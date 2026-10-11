@@ -65,6 +65,12 @@ class PipelineConfig(BaseModel):
     background_video_total_seconds: int = Field(
         default_factory=lambda: int(os.getenv("BACKGROUND_VIDEO_TOTAL_SECONDS", "3600"))
     )
+    youtube_cookies: Optional[str] = Field(
+        default_factory=lambda: os.getenv("YOUTUBE_COOKIES")
+    )
+    background_video_fallback_url: Optional[str] = Field(
+        default_factory=lambda: os.getenv("BACKGROUND_VIDEO_FALLBACK_URL")
+    )
 
     # Story & Voice Settings
     story_source: str = Field(
@@ -94,8 +100,9 @@ class PipelineConfig(BaseModel):
 
     # Subtitle Styles (ASS)
     font_name: str = "Montserrat ExtraBold"
-    font_size: int = 72
-    subtitle_margin_v: int = 300
+    font_size: int = 76
+    subtitle_alignment: int = 5                # 5 = Middle-Center (dead center of the screen)
+    subtitle_margin_v: int = 0                 # 0 offset from middle
     primary_color_ass: str = "&H00FFFFFF&"     # White (AABBGGRR)
     outline_color_ass: str = "&H00000000&"     # Black
     highlight_color_ass: str = "&H0000FFFF&"   # Bright Yellow (BB=00, GG=FF, RR=FF)
