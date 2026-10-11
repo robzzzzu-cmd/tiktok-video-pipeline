@@ -78,11 +78,16 @@ class PipelineConfig(BaseModel):
     )
     subreddits: List[str] = Field(
         default_factory=lambda: [
-            "AITAH",
-            "relationship_advice",
-            "tifu",
-            "AmItheAsshole",
+            "TrueOffMyChest",
+            "EntitledPeople",
+            "pettyrevenge",
             "confession",
+            "relationship_advice",
+            "familydrama",
+            "tifu",
+            "offmychest",
+            "MaliciousCompliance",
+            "AITAH",
         ]
     )
     target_words_min: int = Field(

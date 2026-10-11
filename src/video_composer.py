@@ -48,25 +48,221 @@ def has_audio_stream(video_path: Path) -> bool:
         return True
 
 
+def normalize_video_url(url: str) -> str:
+    """Normalizes video URLs (e.g., Hugging Face blob -> resolve for direct streaming)."""
+    clean_url = url.strip()
+    if "huggingface.co" in clean_url and "/blob/" in clean_url:
+        clean_url = clean_url.replace("/blob/", "/resolve/")
+    return clean_url
+
+
+def probe_video_duration(url_or_path: str) -> Optional[float]:
+    """Probes the total duration in seconds of a remote video URL or local file."""
+    # 1. Try ffprobe (fastest on remote files via HTTP Range)
+    if shutil.which("ffprobe"):
+        try:
+            cmd = [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                url_or_path,
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            if res.returncode == 0 and res.stdout.strip():
+                val = float(res.stdout.strip())
+                if val > 1.0:
+                    logger.info("ffprobe detected duration: %.2fs for %s", val, url_or_path[:80])
+                    return val
+        except Exception as e:
+            logger.debug("ffprobe duration check failed: %s", e)
+
+    # 2. Try yt-dlp metadata
+    if shutil.which("yt-dlp"):
+        try:
+            cmd = ["yt-dlp", "--print", "duration", "--no-warnings", "--no-playlist", url_or_path]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            if res.returncode == 0 and res.stdout.strip():
+                val = float(res.stdout.strip().split("\n")[0])
+                if val > 1.0:
+                    logger.info("yt-dlp detected duration: %.2fs for %s", val, url_or_path[:80])
+                    return val
+        except Exception as e:
+            logger.debug("yt-dlp duration check failed: %s", e)
+
+    return None
+
+
+def extract_random_clip_from_url(
+    url: str,
+    target_duration: float,
+    output_path: Path,
+) -> bool:
+    """Extracts a random section matching target_duration from a long video URL (e.g. Hugging Face).
+
+    Uses fast remote HTTP range seeking with ffmpeg, falling back to yt-dlp download sections.
+    """
+    stream_url = normalize_video_url(url)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 1. Probe total duration or fallback to configured total seconds
+    probed_duration = probe_video_duration(stream_url)
+    total_seconds = probed_duration if (probed_duration and probed_duration > 30) else float(config.background_video_total_seconds)
+
+    clip_duration = math.ceil(target_duration) + 3  # Add 3s safety buffer
+    max_start = max(0, int(total_seconds - clip_duration - 15))
+    start_sec = random.randint(10, max_start) if max_start > 15 else 0
+    end_sec = int(start_sec + clip_duration)
+
+    logger.info(
+        "Extracting random section (%ds to %ds, duration %.1fs) from fallback URL: %s",
+        start_sec,
+        end_sec,
+        target_duration,
+        stream_url[:80],
+    )
+
+    temp_clip = output_path.parent / f"temp_remote_clip_{int(time.time())}_{random.randint(100, 999)}.mp4"
+    if temp_clip.exists():
+        temp_clip.unlink()
+
+    # Strategy A: Fast remote HTTP Range seeking via ffmpeg
+    if shutil.which("ffmpeg"):
+        logger.info("Strategy A: Seeking remote stream with ffmpeg Range requests at offset %ds...", start_sec)
+        cmd_ffmpeg = [
+            "ffmpeg",
+            "-y",
+            "-ss", str(start_sec),
+            "-i", stream_url,
+            "-t", str(clip_duration),
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "22",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-avoid_negative_ts", "make_zero",
+            str(temp_clip),
+        ]
+        try:
+            res = subprocess.run(cmd_ffmpeg, capture_output=True, text=True, timeout=90)
+            if res.returncode == 0 and temp_clip.exists() and temp_clip.stat().st_size > 51200:
+                if output_path.exists():
+                    output_path.unlink()
+                temp_clip.rename(output_path)
+                logger.info("Successfully extracted random section using ffmpeg stream seeking: %s", output_path)
+                return True
+            logger.warning("ffmpeg stream seeking did not produce valid video: stderr: %s", res.stderr[-200:] if res.stderr else "N/A")
+        except Exception as e:
+            logger.warning("ffmpeg stream seeking failed: %s", e)
+            if temp_clip.exists():
+                temp_clip.unlink()
+
+    # Strategy B: yt-dlp partial section download
+    if shutil.which("yt-dlp"):
+        logger.info("Strategy B: Downloading section %d-%ds using yt-dlp...", start_sec, end_sec)
+        cmd_ytdlp = [
+            "yt-dlp",
+            "--download-sections", f"*{start_sec}-{end_sec}",
+            "--force-keyframes-at-cuts",
+            "-f", "best[ext=mp4]/best",
+            "--merge-output-format", "mp4",
+            "--no-playlist",
+            "--no-check-certificates",
+            "--retries", "3",
+            "--socket-timeout", "20",
+            "-o", str(temp_clip),
+            stream_url,
+        ]
+        try:
+            res = subprocess.run(cmd_ytdlp, capture_output=True, text=True, timeout=120)
+            if res.returncode == 0 and temp_clip.exists() and temp_clip.stat().st_size > 51200:
+                if output_path.exists():
+                    output_path.unlink()
+                temp_clip.rename(output_path)
+                logger.info("Successfully extracted random section using yt-dlp download-sections: %s", output_path)
+                return True
+            logger.warning("yt-dlp download-sections failed: stderr: %s", res.stderr[-200:] if res.stderr else "N/A")
+        except Exception as e:
+            logger.warning("yt-dlp download-sections failed: %s", e)
+            if temp_clip.exists():
+                temp_clip.unlink()
+
+    # Strategy C: Download full video to local cache then slice locally
+    cached_source = output_path.parent / "fallback_source_full.mp4"
+    if not (cached_source.exists() and cached_source.stat().st_size > 1048576):
+        logger.info("Strategy C: Downloading full fallback video for local slicing...")
+        try:
+            cmd_dl = [
+                "yt-dlp",
+                "-f", "best[ext=mp4]/best",
+                "-o", str(cached_source),
+                stream_url,
+            ]
+            subprocess.run(cmd_dl, check=True, capture_output=True, timeout=300)
+        except Exception as e:
+            logger.warning("Failed to download fallback full video: %s", e)
+
+    if cached_source.exists() and cached_source.stat().st_size > 1048576 and shutil.which("ffmpeg"):
+        logger.info("Slicing random section locally from cached fallback video...")
+        local_duration = probe_video_duration(str(cached_source)) or total_seconds
+        local_max_start = max(0, int(local_duration - clip_duration - 10))
+        local_start = random.randint(10, local_max_start) if local_max_start > 15 else 0
+        cmd_slice = [
+            "ffmpeg",
+            "-y",
+            "-ss", str(local_start),
+            "-i", str(cached_source),
+            "-t", str(clip_duration),
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-c:a", "aac",
+            str(temp_clip),
+        ]
+        try:
+            subprocess.run(cmd_slice, check=True, capture_output=True)
+            if temp_clip.exists() and temp_clip.stat().st_size > 51200:
+                if output_path.exists():
+                    output_path.unlink()
+                temp_clip.rename(output_path)
+                logger.info("Successfully sliced random section locally: %s", output_path)
+                return True
+        except Exception as e:
+            logger.warning("Local slicing failed: %s", e)
+            if temp_clip.exists():
+                temp_clip.unlink()
+
+    return False
+
+
 def download_background_clip(
     target_duration: float,
     output_path: Path,
     max_retries: int = 3,
 ) -> Path:
-    """Downloads a random segment from the 1-hour satisfying restocking YouTube video.
+    """Downloads a random segment matching target_duration from the background video.
 
-    Uses yt-dlp with `--download-sections "*START-END"` to download only the needed
-    slice (e.g. 180-195s) rather than the entire 1-hour file.
+    Prioritizes BACKGROUND_VIDEO_FALLBACK_URL if provided (e.g. Hugging Face video),
+    extracting a random section each time. Otherwise extracts a random section from YouTube.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 1. Check if user configured BACKGROUND_VIDEO_FALLBACK_URL (e.g. Hugging Face)
+    if config.background_video_fallback_url:
+        logger.info(
+            "BACKGROUND_VIDEO_FALLBACK_URL detected. Extracting random section matching %.1fs...",
+            target_duration,
+        )
+        if extract_random_clip_from_url(config.background_video_fallback_url, target_duration, output_path):
+            return output_path
+        logger.warning("Fallback URL extraction failed. Trying YouTube extraction...")
+
+    # 2. Extract random section from YouTube
     total_seconds = config.background_video_total_seconds
-    # Safety margin so we don't exceed the 1-hour mark
     max_start = max(10, int(total_seconds - target_duration - 30))
 
     for attempt in range(1, max_retries + 1):
-        # Pick random start offset
         start_sec = random.randint(15, max_start)
-        end_sec = int(start_sec + math.ceil(target_duration) + 3)  # 3s buffer
+        end_sec = int(start_sec + math.ceil(target_duration) + 3)
 
         logger.info(
             "Downloading YouTube section %d-%ds (attempt %d/%d)...",
@@ -76,19 +272,16 @@ def download_background_clip(
             max_retries,
         )
 
-        # Temporary file path for this attempt
         temp_download = output_path.parent / f"raw_bg_{attempt}.mp4"
         if temp_download.exists():
             temp_download.unlink()
 
-        # Prepare cookies if provided
         cookies_arg = []
         if config.youtube_cookies:
             cookies_file = output_path.parent / "yt_cookies.txt"
             cookies_file.write_text(config.youtube_cookies, encoding="utf-8")
             cookies_arg = ["--cookies", str(cookies_file)]
 
-        # Cycle through different client extractors on each retry
         client_extractors = [
             "youtube:player_client=ios",
             "youtube:player_client=android",
@@ -120,11 +313,11 @@ def download_background_clip(
                 if output_path.exists():
                     output_path.unlink()
                 temp_download.rename(output_path)
-                logger.info("Successfully downloaded background video segment: %s", output_path)
+                logger.info("Successfully downloaded YouTube background video segment: %s", output_path)
                 return output_path
         except subprocess.CalledProcessError as e:
             logger.warning(
-                "yt-dlp download failed on attempt %d: %s | stderr: %s",
+                "yt-dlp YouTube download failed on attempt %d: %s | stderr: %s",
                 attempt,
                 e,
                 e.stderr[-300:] if e.stderr else "N/A",
@@ -133,29 +326,19 @@ def download_background_clip(
                 temp_download.unlink()
             time.sleep(2 * attempt)
         except Exception as e:
-            logger.warning("yt-dlp unexpected error on attempt %d: %s", attempt, e)
+            logger.warning("yt-dlp YouTube unexpected error on attempt %d: %s", attempt, e)
             if temp_download.exists():
                 temp_download.unlink()
             time.sleep(2 * attempt)
 
-    # If YouTube was blocked (e.g. datacenter IP challenge), try fallback direct video if configured
+    # 3. If YouTube was blocked and fallback URL wasn't tried yet:
     if config.background_video_fallback_url:
-        logger.info("Attempting download from background video fallback URL: %s", config.background_video_fallback_url)
-        try:
-            cmd = [
-                "yt-dlp",
-                "-f", "best[ext=mp4]/best",
-                "-o", str(output_path),
-                config.background_video_fallback_url,
-            ]
-            subprocess.run(cmd, check=True, capture_output=True)
-            if output_path.exists() and output_path.stat().st_size > 10240:
-                return output_path
-        except Exception as e:
-            logger.warning("Fallback video download failed: %s", e)
+        logger.info("Retrying extraction from BACKGROUND_VIDEO_FALLBACK_URL...")
+        if extract_random_clip_from_url(config.background_video_fallback_url, target_duration, output_path):
+            return output_path
 
-    # If all downloads failed, generate an animated satisfying dynamic gradient video
-    logger.warning("YouTube download was blocked by anti-bot IP challenge. Generating dynamic animated satisfying background.")
+    # 4. If all downloads failed, generate an animated satisfying dynamic gradient video
+    logger.warning("YouTube & fallback downloads blocked. Generating dynamic animated satisfying background.")
     return generate_procedural_background(target_duration, output_path)
 
 
@@ -254,6 +437,7 @@ def render_final_video(
     cmd = [
         "ffmpeg",
         "-y",
+        "-stream_loop", "-1",
         "-i", str(background_video),
         "-i", str(voiceover_audio),
     ]

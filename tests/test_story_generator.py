@@ -59,11 +59,19 @@ def test_curated_fallback_stories():
     story_f = get_curated_fallback_story("female")
     assert story_f.narrator_gender == "female"
     assert story_f.word_count > 150
-    assert "AITA" in story_f.title or "wedding" in story_f.title
+    assert story_f.title != ""
 
     story_m = get_curated_fallback_story("male")
     assert story_m.narrator_gender == "male"
     assert story_m.word_count > 150
+    assert story_m.title != ""
+
+
+def test_clean_story_title():
+    from src.story_generator import clean_story_title
+    assert "Walking out" in clean_story_title("AITA for walking out of my sister's wedding?")
+    assert clean_story_title("[UPDATE] My roommate stole my car") == "My roommate stole my car"
+    assert "Told my parents" in clean_story_title("WIBTA if I told my parents the truth?")
 
 
 def test_fetch_from_huggingface_reddit():

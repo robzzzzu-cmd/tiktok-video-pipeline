@@ -25,3 +25,16 @@ def test_build_caption_truncation():
     caption = build_caption(long_title)
     assert len(caption.split("\n\n")[0]) <= 100
     assert "..." in caption
+
+
+def test_normalize_video_url():
+    from src.video_composer import normalize_video_url
+
+    hf_blob = "https://huggingface.co/datasets/user/repo/blob/main/video.mp4"
+    normalized = normalize_video_url(hf_blob)
+    assert "/resolve/" in normalized
+    assert "/blob/" not in normalized
+
+    normal_url = "https://example.com/video.mp4"
+    assert normalize_video_url(normal_url) == normal_url
+

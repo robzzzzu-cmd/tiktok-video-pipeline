@@ -53,12 +53,13 @@ flowchart TD
 
 ## ✨ Key Features
 
-1. **Zero-Credentials Autonomous Story Engine (`src/story_generator.py`)**:
-   - **No Reddit Client ID or Secret required!** The pipeline directly queries the serverless 270,000+ public Reddit AITAH dataset with zero authentication or API setup.
-   - Also supports live Reddit JSON endpoints, optional PRAW credentials, or original story generation via **Google Gemini 2.5 Flash** (`google-genai`).
-   - Automatically cleans markdown formatting, URLs, and expands Reddit abbreviations (`AITA` $\to$ *"Am I the asshole"*, `MIL` $\to$ *"mother-in-law"*, `SIL` $\to$ *"sister-in-law"*).
+1. **Diverse Viral Story Engine (`src/story_generator.py`)**:
+   - **Rich Drama Beyond Standard AITA**: Features viral story formats inspired by top TikTok story accounts (`r/TrueOffMyChest`, `r/EntitledPeople`, `r/pettyrevenge`, `r/familydrama`, `r/relationship_advice`, `r/confession`, `r/MaliciousCompliance`, `r/tifu`).
+   - Automatically cleans titles and narrative hooks (converts forum prefixes into high-retention TikTok hooks, strips trailing boilerplate).
+   - **Zero-Credentials Autonomous Database**: Queries live Reddit JSON feeds, top monthly viral posts, or the 270,000+ public Reddit stories dataset without requiring any API keys.
+   - **Google Gemini 2.5 Flash (`google-genai`)**: Generates diverse high-suspense story scripts across 5 viral themes (family vacation betrayal, entitled roommate karma, petty revenge, wedding drama, inheritance feuds).
    - Automatically detects narrator gender (`[24M]`, `[28F]`, `I am a 30 year old man`, contextual pronouns) with 50/50 fallback if ambiguous.
-   - Strictly enforces target word counts (450–520 words) for an exact ~3-minute video.
+   - Enforces target word counts (450–520 words) for an exact ~3-minute video.
 
 2. **Ultra-Realistic Neural TTS (`src/tts_engine.py`)**:
    - Powered by `edge-tts` (zero cost, zero API keys required) with `boundary="WordBoundary"` precision streaming.
@@ -75,12 +76,11 @@ flowchart TD
      - Color: Primary white (`&H00FFFFFF&`), strong black border outline (`&H00000000&`, thickness: 5), subtle drop shadow.
      - **Active Word Animation**: Spoken words dynamically pop and highlight in **Bright Yellow** (`&H0000FFFF&`) with scale pop (`\fscx106\fscy106`).
 
-4. **Efficient YouTube Background Video Slicing (`src/video_composer.py`)**:
-   - Source Video: [Satisfying Restocking ASMR compilation (1 hour)](https://www.youtube.com/watch?v=9or33zyZJgM).
-   - Extracts only the needed random 3-minute clip (180–195s) with `yt-dlp --download-sections "*START-END"`. **Never downloads the full 1-hour video file**, saving bandwidth and running within minutes on GitHub Actions.
-   - **Cloud Runner Anti-Bot Handling**: On cloud runners (GitHub Actions / Azure), YouTube blocks datacenter IPs with *"Sign in to confirm you're not a bot"*. To enable YouTube downloads in GitHub Actions, simply add your YouTube session cookies in `YOUTUBE_COOKIES` secret. If no cookies are provided, the compositor automatically switches to high-speed satisfying animated dynamic spiral visuals so the pipeline never breaks!
-   - Centers and crops to **vertical 9:16 (1080x1920 at 30fps)**.
-   - Mixes audio: primary voiceover + background ASMR lowered to **-22dB**.
+4. **Multi-Source Background Video Slicing (`src/video_composer.py`)**:
+   - **Hugging Face Direct Video (`BACKGROUND_VIDEO_FALLBACK_URL`)**: Extracts a **fresh random clip matching the video's exact duration on every run** using high-speed remote HTTP Range seeking via FFmpeg or `yt-dlp`. Never downloads unnecessary video data.
+   - **YouTube Primary/Secondary Source**: Extracts 3-minute clips from the [Satisfying Restocking ASMR compilation](https://www.youtube.com/watch?v=9or33zyZJgM) with `yt-dlp --download-sections "*START-END"`.
+   - **Seamless Audio & Looping**: Includes `-stream_loop -1` to guarantee background video never cuts short, scales and crops to **vertical 9:16 (1080x1920 at 30fps)**, and ducks background ASMR to **-22dB**.
+   - **Procedural Background Fallback**: If remote video servers are unreachable, generates dynamic animated satisfying visual spirals.
 
 5. **Dual-Method TikTok Publisher (`src/tiktok_uploader.py`)**:
    - **Method A (Primary)**: TikTok Official Content Posting API (`POST /v2/post/publish/video/init/`) with automated token refresh.
@@ -137,6 +137,8 @@ To run this pipeline automatically on GitHub Actions, go to your repository on G
 | `TIKTOK_SESSION_ID` | Optional | Web cookie `sessionid` from tiktok.com for Playwright headless browser fallback. |
 | `REDDIT_CLIENT_ID` | Optional | Reddit Script App Client ID (public JSON is used if omitted). |
 | `REDDIT_CLIENT_SECRET` | Optional | Reddit Script App Client Secret. |
+| `BACKGROUND_VIDEO_FALLBACK_URL` | Optional | Hugging Face or direct MP4 URL to 1-hour satisfying restocking background video. Extracts a random clip on each run. |
+| `YOUTUBE_COOKIES` | Optional | YouTube cookies export (`yt_cookies.txt`) for datacenter IP anti-bot bypass. |
 
 > [!TIP]
 > If neither `TIKTOK_ACCESS_TOKEN` nor `TIKTOK_SESSION_ID` is provided, the workflow will generate the complete video and save it as an inspectable **GitHub Workflow Artifact** without failing.
