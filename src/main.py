@@ -36,6 +36,7 @@ def run_pipeline(
     gender: Optional[str] = None,
     subreddit: Optional[str] = None,
     category: str = "auto",
+    bg_style: str = "auto",
     dry_run: bool = False,
     skip_upload: bool = False,
     keep_temp: bool = False,
@@ -51,7 +52,14 @@ def run_pipeline(
 
     logger.info("=========================================================")
     logger.info("Starting Automated TikTok Storytime Pipeline")
-    logger.info("Run ID: %s | Source: %s | Category: %s | Dry Run: %s", timestamp_str, source, category, dry_run)
+    logger.info(
+        "Run ID: %s | Source: %s | Category: %s | BG Style: %s | Dry Run: %s",
+        timestamp_str,
+        source,
+        category,
+        bg_style,
+        dry_run,
+    )
     logger.info("=========================================================")
 
     try:
@@ -88,21 +96,28 @@ def run_pipeline(
             len(tts_result.word_timings),
         )
 
-        # Step 3: Dynamic ASS Subtitle Creation
+        # Step 3: Dynamic ASS Subtitle Creation with Category Accents & Top Hook
         logger.info("[Step 3/5] Generating TikTok animated word-highlight subtitles...")
         ass_path = temp_run_dir / f"captions_{timestamp_str}.ass"
+        matched_cat = story.tags[-1] if (story.tags and story.tags[-1] in config.category_colors) else category
+        highlight_color = config.category_colors.get(matched_cat, config.highlight_color_ass)
+        category_label = story.subreddit if story.subreddit else matched_cat.upper()
         generate_ass_subtitles(
             word_timings=tts_result.word_timings,
             output_ass_path=ass_path,
+            highlight_color=highlight_color,
+            story_title=story.title,
+            category_tag=category_label,
         )
-        logger.info("Subtitles written to %s", ass_path)
+        logger.info("Subtitles written to %s (highlight color: %s)", ass_path, highlight_color)
 
         # Step 4: Background Video & Quiet Background Music
-        logger.info("[Step 4/5] Extracting random background segment and preparing quiet background music...")
+        logger.info("[Step 4/5] Extracting random '%s' background segment and preparing quiet background music...", bg_style)
         raw_bg_path = temp_run_dir / f"background_{timestamp_str}.mp4"
         download_background_clip(
             target_duration=tts_result.duration_seconds,
             output_path=raw_bg_path,
+            bg_style=bg_style,
         )
 
         bg_music_path = temp_run_dir / f"bg_music_{timestamp_str}.mp3"
@@ -140,6 +155,8 @@ def run_pipeline(
         summary = {
             "timestamp": timestamp_str,
             "status": "completed",
+            "category": matched_cat,
+            "bg_style": bg_style,
             "story": {
                 "title": story.title,
                 "gender": story.narrator_gender,
@@ -198,9 +215,18 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--category",
-        choices=["auto", "love", "inheritance", "entitled", "aitah"],
+        choices=[
+            "auto", "love", "inheritance", "entitled", "revenge", "confession",
+            "aitah", "facts", "scary", "showerthoughts", "wild_history", "workplace"
+        ],
         default="auto",
-        help="Story category: 'love' (relationships/dating), 'inheritance' (family inheritance/wills), 'entitled', or 'aitah'.",
+        help="Story category: love, inheritance, entitled, revenge, confession, aitah, facts, scary, showerthoughts, wild_history, workplace.",
+    )
+    parser.add_argument(
+        "--bg-style",
+        choices=["auto", "minecraft", "subway_surfers", "gta", "satisfying", "beamng"],
+        default="auto",
+        help="Background gameplay style: 'minecraft', 'subway_surfers', 'gta', 'satisfying', 'beamng', or 'auto'.",
     )
     parser.add_argument(
         "--dry-run",
@@ -246,6 +272,7 @@ def main() -> None:
             gender=args.gender,
             subreddit=args.subreddit,
             category=args.category,
+            bg_style=args.bg_style,
             dry_run=args.dry_run,
             skip_upload=args.skip_upload,
             keep_temp=args.keep_temp,

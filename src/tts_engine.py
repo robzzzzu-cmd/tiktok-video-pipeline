@@ -45,6 +45,59 @@ def select_voice(gender: str) -> Tuple[str, str]:
     return config.voice_male_primary, config.voice_male_fallback
 
 
+def get_voices_to_try(gender: str) -> List[str]:
+    """Returns prioritized candidate list of neural Edge-TTS voices for the narrator gender."""
+    if gender.lower() == "female":
+        candidates = [
+            config.voice_female_primary,
+            config.voice_female_fallback,
+            "en-US-AvaNeural",
+            "en-US-EmmaNeural",
+            "en-US-MichelleNeural",
+            "en-GB-SoniaNeural",
+        ]
+    else:
+        candidates = [
+            config.voice_male_primary,
+            config.voice_male_fallback,
+            "en-US-BrianNeural",
+            "en-US-AndrewNeural",
+            "en-US-EricNeural",
+            "en-GB-RyanNeural",
+        ]
+    # Deduplicate while preserving priority order
+    seen = set()
+    result = []
+    for c in candidates:
+        if c and c not in seen:
+            seen.add(c)
+            result.append(c)
+    return result
+
+
+def _synthesize_with_gtts(text: str, gender: str, output_audio: Path) -> bool:
+    """Fallback speech synthesis using Google Translate TTS (gTTS).
+
+    High-reliability HTTPS synthesis that does not use WebSockets and bypasses 403 blocks.
+    """
+    try:
+        from gtts import gTTS
+
+        tld = "co.uk" if gender.lower() == "female" else "com"
+        logger.info("Attempting gTTS fallback synthesis (tld: %s)...", tld)
+        tts = gTTS(text=text, lang="en", tld=tld, slow=False)
+        tts.save(str(output_audio))
+
+        if output_audio.exists() and output_audio.stat().st_size > 1024:
+            logger.info("gTTS fallback synthesis succeeded (%d bytes)", output_audio.stat().st_size)
+            return True
+        logger.warning("gTTS audio file was empty or missing.")
+        return False
+    except Exception as e:
+        logger.warning("gTTS synthesis failed: %s", e)
+        return False
+
+
 def get_audio_duration_ffprobe(audio_path: Path) -> Optional[float]:
     """Uses ffprobe to obtain exact audio duration in seconds if ffprobe is installed."""
     if not shutil.which("ffprobe"):
@@ -152,13 +205,13 @@ def generate_voiceover(
     audio_path = output_dir / f"{filename_prefix}.mp3"
     metadata_path = output_dir / f"{filename_prefix}_timings.json"
 
-    primary_voice, fallback_voice = select_voice(gender)
-    voices_to_try = [primary_voice, fallback_voice]
+    voices_to_try = get_voices_to_try(gender)
 
     last_error: Optional[Exception] = None
     successful_voice = ""
     word_timings: List[WordTiming] = []
 
+    # 1. Primary Strategy: Microsoft Edge-TTS with WordBoundary streaming
     for voice in voices_to_try:
         try:
             logger.info("Synthesizing voiceover with edge-tts voice '%s'...", voice)
@@ -166,7 +219,7 @@ def generate_voiceover(
             if audio_path.exists() and audio_path.stat().st_size > 1024:
                 successful_voice = voice
                 logger.info(
-                    "Speech synthesis succeeded (%d words, %d bytes)",
+                    "Edge-TTS synthesis succeeded (%d words, %d bytes)",
                     len(word_timings),
                     audio_path.stat().st_size,
                 )
@@ -175,10 +228,19 @@ def generate_voiceover(
             logger.warning("Synthesis failed with voice '%s': %s", voice, e)
             last_error = e
 
+    # 2. Resilient Fallback Strategy: Google Translate TTS (gTTS)
     if not successful_voice:
-        raise RuntimeError(
-            f"All voice synthesis attempts failed for gender '{gender}'. Last error: {last_error}"
+        logger.warning(
+            "All Edge-TTS voices failed (last error: %s). Activating gTTS fallback engine...",
+            last_error,
         )
+        if _synthesize_with_gtts(text, gender, audio_path):
+            successful_voice = f"gTTS-en-{'female' if gender.lower() == 'female' else 'male'}"
+            word_timings = []  # Will be generated via proportional estimator below
+        else:
+            raise RuntimeError(
+                f"All voice synthesis attempts failed for gender '{gender}'. Last error: {last_error}"
+            )
 
     # Determine total duration
     duration = get_audio_duration_ffprobe(audio_path)

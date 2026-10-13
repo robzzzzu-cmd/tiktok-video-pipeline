@@ -237,16 +237,18 @@ def extract_random_clip_from_url(
 def download_background_clip(
     target_duration: float,
     output_path: Path,
+    bg_style: Optional[str] = None,
     max_retries: int = 3,
 ) -> Path:
-    """Downloads a random segment matching target_duration from the background video.
+    """Downloads a random segment matching target_duration from a gameplay/ASMR background video.
 
-    Prioritizes BACKGROUND_VIDEO_FALLBACK_URL if provided (e.g. Hugging Face video),
-    extracting a random section each time. Otherwise extracts a random section from YouTube.
+    Picks footage matching bg_style (minecraft, subway_surfers, gta, satisfying, beamng, or auto).
+    Prioritizes BACKGROUND_VIDEO_FALLBACK_URL if provided, then queries YouTube preset pool,
+    and falls back to dynamic procedural generation if all network sources are unavailable.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # 1. Check if user configured BACKGROUND_VIDEO_FALLBACK_URL (e.g. Hugging Face)
+    # 1. Check if user configured BACKGROUND_VIDEO_FALLBACK_URL (e.g. Hugging Face / direct stream)
     if config.background_video_fallback_url:
         logger.info(
             "BACKGROUND_VIDEO_FALLBACK_URL detected. Extracting random section matching %.1fs...",
@@ -254,25 +256,38 @@ def download_background_clip(
         )
         if extract_random_clip_from_url(config.background_video_fallback_url, target_duration, output_path):
             return output_path
-        logger.warning("Fallback URL extraction failed. Trying YouTube extraction...")
+        logger.warning("Fallback URL extraction failed. Trying YouTube extraction presets...")
 
-    # 2. Extract random section from YouTube
+    # 2. Select background visual style and candidate video URLs
+    style_key = bg_style if (bg_style and bg_style != "auto") else config.bg_style
+    if not style_key or style_key == "auto" or style_key not in config.background_video_presets:
+        style_key = random.choice(list(config.background_video_presets.keys()))
+
+    logger.info("Selected background footage style: '%s'", style_key)
+    candidate_urls = list(config.background_video_presets.get(style_key, []))
+    if config.background_video_url and config.background_video_url not in candidate_urls:
+        candidate_urls.append(config.background_video_url)
+    random.shuffle(candidate_urls)
+
     total_seconds = config.background_video_total_seconds
     max_start = max(10, int(total_seconds - target_duration - 30))
 
-    for attempt in range(1, max_retries + 1):
+    # 3. Iterate through candidate URLs in the selected style
+    for url_idx, video_url in enumerate(candidate_urls[:max_retries]):
         start_sec = random.randint(15, max_start)
         end_sec = int(start_sec + math.ceil(target_duration) + 3)
 
         logger.info(
-            "Downloading YouTube section %d-%ds (attempt %d/%d)...",
+            "Downloading '%s' section %d-%ds from %s (attempt %d/%d)...",
+            style_key,
             start_sec,
             end_sec,
-            attempt,
+            video_url,
+            url_idx + 1,
             max_retries,
         )
 
-        temp_download = output_path.parent / f"raw_bg_{attempt}.mp4"
+        temp_download = output_path.parent / f"raw_bg_{url_idx + 1}.mp4"
         if temp_download.exists():
             temp_download.unlink()
 
@@ -287,7 +302,7 @@ def download_background_clip(
             "youtube:player_client=android",
             "youtube:player_client=mweb",
         ]
-        extractor_choice = client_extractors[(attempt - 1) % len(client_extractors)]
+        extractor_choice = client_extractors[url_idx % len(client_extractors)]
 
         cmd = [
             "yt-dlp",
@@ -304,7 +319,7 @@ def download_background_clip(
             "--socket-timeout", "20",
         ] + cookies_arg + [
             "-o", str(temp_download),
-            config.background_video_url,
+            video_url,
         ]
 
         try:
@@ -317,27 +332,28 @@ def download_background_clip(
                 return output_path
         except subprocess.CalledProcessError as e:
             logger.warning(
-                "yt-dlp YouTube download failed on attempt %d: %s | stderr: %s",
-                attempt,
+                "yt-dlp YouTube download failed for %s on attempt %d: %s | stderr: %s",
+                video_url,
+                url_idx + 1,
                 e,
                 e.stderr[-300:] if e.stderr else "N/A",
             )
             if temp_download.exists():
                 temp_download.unlink()
-            time.sleep(2 * attempt)
+            time.sleep(2)
         except Exception as e:
-            logger.warning("yt-dlp YouTube unexpected error on attempt %d: %s", attempt, e)
+            logger.warning("yt-dlp YouTube unexpected error on attempt %d: %s", url_idx + 1, e)
             if temp_download.exists():
                 temp_download.unlink()
-            time.sleep(2 * attempt)
+            time.sleep(2)
 
-    # 3. If YouTube was blocked and fallback URL wasn't tried yet:
+    # 4. If YouTube was blocked and fallback URL wasn't tried yet:
     if config.background_video_fallback_url:
         logger.info("Retrying extraction from BACKGROUND_VIDEO_FALLBACK_URL...")
         if extract_random_clip_from_url(config.background_video_fallback_url, target_duration, output_path):
             return output_path
 
-    # 4. If all downloads failed, generate an animated satisfying dynamic gradient video
+    # 5. If all downloads failed, generate an animated satisfying dynamic gradient video
     logger.warning("YouTube & fallback downloads blocked. Generating dynamic animated satisfying background.")
     return generate_procedural_background(target_duration, output_path)
 

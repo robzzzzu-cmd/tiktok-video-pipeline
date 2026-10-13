@@ -1,5 +1,6 @@
 # Core Text-to-Speech & Subtitles
-edge-tts>=6.1.12
+edge-tts>=7.0.0
+gTTS>=2.5.1
 
 # Media Download & Audio/Video
 yt-dlp>=2024.08.06

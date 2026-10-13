@@ -56,6 +56,8 @@ ACRONYM_MAP = {
     r"\bTLDR\b": "too long didn't read",
     r"\bTL;DR\b": "too long didn't read",
     r"\bTIFU\b": "today I messed up",
+    r"\bTIL\b": "today I learned",
+    r"\bELI5\b": "explain like I am five",
 }
 
 
@@ -81,11 +83,11 @@ def clean_text_for_narration(text: str, category: str = "auto") -> str:
 
     # Expand common Reddit acronyms
     for pattern, replacement in ACRONYM_MAP.items():
-        if category in ("love", "inheritance", "entitled", "revenge", "confession") and pattern in (r"\bAITA\b", r"\bWIBTA\b"):
+        if category in ("love", "inheritance", "entitled", "revenge", "confession", "workplace") and pattern in (r"\bAITA\b", r"\bWIBTA\b"):
             text = re.sub(pattern, "in the wrong", text, flags=re.IGNORECASE)
-        elif category in ("love", "inheritance", "entitled", "revenge", "confession") and pattern == r"\bNTA\b":
+        elif category in ("love", "inheritance", "entitled", "revenge", "confession", "workplace") and pattern == r"\bNTA\b":
             text = re.sub(pattern, "in the right", text, flags=re.IGNORECASE)
-        elif category in ("love", "inheritance", "entitled", "revenge", "confession") and pattern in (r"\bYTA\b", r"\bESH\b"):
+        elif category in ("love", "inheritance", "entitled", "revenge", "confession", "workplace") and pattern in (r"\bYTA\b", r"\bESH\b"):
             text = re.sub(pattern, "in the wrong", text, flags=re.IGNORECASE)
         else:
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
@@ -98,7 +100,7 @@ def clean_text_for_narration(text: str, category: str = "auto") -> str:
         flags=re.IGNORECASE,
     )
 
-    if category in ("love", "inheritance", "entitled", "revenge", "confession"):
+    if category in ("love", "inheritance", "entitled", "revenge", "confession", "workplace"):
         # Remove any lingering "Am I the asshole" phrases anywhere in the narrative
         text = re.sub(r"\b(?:Am I the asshole|would I be the asshole)\b\??", "am I in the wrong", text, flags=re.IGNORECASE)
         text = re.sub(r"\b(?:an asshole|the asshole)\b", "in the wrong", text, flags=re.IGNORECASE)
@@ -114,7 +116,7 @@ def clean_story_title(title: str, category: str = "auto") -> str:
     """Cleans raw Reddit titles into natural viral story hooks for TikTok narration.
 
     Preserves AITA prefixes when category is 'aitah'.
-    Strips AITA prefixes when category is 'love', 'inheritance', 'entitled', 'revenge', or 'confession'.
+    Strips AITA/TIFU/TIL prefixes when category is not 'aitah'.
     """
     if not title:
         return ""
@@ -134,6 +136,12 @@ def clean_story_title(title: str, category: str = "auto") -> str:
         )
         title = re.sub(
             r"^(?:TIFU\s+by|TIFU\s+for|TIFU)[:\s]*",
+            "",
+            title,
+            flags=re.IGNORECASE,
+        )
+        title = re.sub(
+            r"^(?:TIL\s+that|TIL|Today I learned\s+that|Today I learned)[:\s]*",
             "",
             title,
             flags=re.IGNORECASE,
@@ -233,7 +241,12 @@ def fetch_from_reddit_json(subreddit: str) -> Optional[Story]:
         f"https://www.reddit.com/r/{subreddit}/top.json?t=month&limit=35",
     ]
     random.shuffle(endpoints)
-    headers = {"User-Agent": config.reddit_user_agent}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.reddit.com/",
+    }
 
     for url in endpoints:
         try:
@@ -404,6 +417,51 @@ STORY_CATEGORIES = {
         "keywords": ["aita", "asshole", "am i the asshole", "wibta"],
         "gemini_theme": "A classic moral dilemma where the narrator made a controversial but justified decision, dividing their family, starting with 'AITA for...'.",
     },
+    "facts": {
+        "name": "Mind-Blowing Facts & Disturbing Curiosities",
+        "subreddits": ["todayilearned", "damnthatsinteresting", "AskReddit", "oddlyterrifying"],
+        "keywords": [
+            "fact", "learned", "science", "ocean", "space", "brain", "body", "historical",
+            "psychological", "creepy", "discovered", "theory", "phenomenon", "ancient", "mystery"
+        ],
+        "gemini_theme": "A rapid-fire countdown of 4 to 5 mind-blowing, unsettling, or unbelievable real-world facts (deep ocean mysteries, disturbing psychology, bizarre medical anomalies, or surreal space phenomena) that leave the viewer shocked. Fast-paced, intense hooks, conversational delivery.",
+    },
+    "scary": {
+        "name": "True Horror, Paranormal & Glitch in the Matrix",
+        "subreddits": ["nosleep", "Glitch_in_the_Matrix", "LetsNotMeet", "scarystories", "Ghoststories"],
+        "keywords": [
+            "creepy", "scary", "woods", "cabin", "night", "stalker", "glitch", "mimic",
+            "footsteps", "unexplained", "watcher", "window", "shadow", "voice", "horror"
+        ],
+        "gemini_theme": "A spine-chilling, atmospheric true-style horror or glitch-in-the-matrix encounter: working the graveyard night shift, living isolated in a cabin hearing one's own voice outside, or an impossible glitch in reality that cannot be rationalized. Escalating dread with a lingering terrifying ending.",
+    },
+    "showerthoughts": {
+        "name": "Mind-Bending Thoughts & Deep Epiphanies",
+        "subreddits": ["Showerthoughts", "AskReddit", "Existentialism"],
+        "keywords": [
+            "thought", "realize", "perspective", "brain", "time", "humanity", "simulation",
+            "universe", "existential", "conscious", "paradox", "reality"
+        ],
+        "gemini_theme": "A series of 4 mind-bending shower thoughts, philosophical paradoxes, and perspective-shifting epiphanies that break the viewer's brain and make them question everyday life and reality.",
+    },
+    "wild_history": {
+        "name": "Unbelievable Historical Events & Survival Stories",
+        "subreddits": ["HistoryAnecdotes", "TrueCrime", "UnresolvedMysteries", "nonononoyes"],
+        "keywords": [
+            "history", "survived", "heist", "impossible", "miracle", "war", "island",
+            "coincidence", "pilot", "escape", "legend", "century", "expedition"
+        ],
+        "gemini_theme": "An insane, unbelievable true historical survival story or audacious heist that sounds like fiction but actually happened (e.g. an impossible wilderness survival miracle, wild military coincidence, or genius trickery).",
+    },
+    "workplace": {
+        "name": "Unhinged Customers & Workplace Chaos",
+        "subreddits": ["TalesFromRetail", "IDontWorkHereLady", "talesfromtechsupport", "pettyrevenge"],
+        "keywords": [
+            "manager", "customer", "karen", "store", "cashier", "fired", "demanded",
+            "police", "shift", "retail", "refund", "receipt", "corporate"
+        ],
+        "gemini_theme": "A wildly entertaining workplace or retail encounter where an unhinged, entitled customer tries to get an employee fired, only to face instant public embarrassment or police karma.",
+    },
 }
 
 
@@ -526,24 +584,40 @@ def generate_with_gemini(
         prompt_gender = gender_override or random.choice(["male", "female"])
         gender_tag = "26F" if prompt_gender == "female" else "28M"
 
-        format_instruction = (
-            "NARRATIVE FORMAT: Title should start with 'AITA for...' or 'Am I the asshole for...'"
-            if cat_key == "aitah"
-            else "NARRATIVE FORMAT: DO NOT use 'Am I the asshole?' or AITA format. Make it a gripping personal storytime."
-        )
+        if cat_key == "facts":
+            narrator_rule = f"The voice narrator is {prompt_gender.upper()} delivering a rapid-fire, highly engaging curiosity presentation to the viewer."
+            format_instruction = "NARRATIVE FORMAT: Title should be a high-engagement curiosity hook (e.g. 'Disturbing psychological facts that will keep you awake tonight'). Body should deliver 4 captivating facts conversationally, building in suspense."
+        elif cat_key == "showerthoughts":
+            narrator_rule = f"The voice narrator is {prompt_gender.upper()} presenting mind-bending concepts directly to the viewer."
+            format_instruction = "NARRATIVE FORMAT: Title should be a brain-breaking epiphany hook (e.g. 'Shower thoughts that break your brain'). Body should deliver 4 deep, perspective-shifting epiphanies."
+        elif cat_key == "scary":
+            narrator_rule = f"The narrator is {prompt_gender.upper()}, tagged in opening line as 'I ({gender_tag})' or 'I [{gender_tag}]'."
+            format_instruction = "NARRATIVE FORMAT: Title should be a chilling encounter hook. Body should be an atmospheric true horror encounter with escalating dread and a terrifying conclusion."
+        elif cat_key == "wild_history":
+            narrator_rule = f"The narrator is {prompt_gender.upper()} recounting an unbelievable true historical event or survival tale."
+            format_instruction = "NARRATIVE FORMAT: Title should be an unbelievable history hook. Body should tell an extraordinary true survival or historical feat."
+        elif cat_key == "workplace":
+            narrator_rule = f"The narrator is {prompt_gender.upper()}, tagged in opening line as 'I ({gender_tag})' or 'I [{gender_tag}]'."
+            format_instruction = "NARRATIVE FORMAT: Title should be an unhinged customer/manager hook. Body should describe an outrageous workplace encounter with epic karma."
+        elif cat_key == "aitah":
+            narrator_rule = f"The narrator is {prompt_gender.upper()}, tagged explicitly in the opening line as 'I ({gender_tag})' or 'I [{gender_tag}]'."
+            format_instruction = "NARRATIVE FORMAT: Title should start with 'AITA for...' or 'Am I the asshole for...'"
+        else:
+            narrator_rule = f"The narrator is {prompt_gender.upper()}, tagged explicitly in the opening line as 'I ({gender_tag})' or 'I [{gender_tag}]'."
+            format_instruction = "NARRATIVE FORMAT: DO NOT use 'Am I the asshole?' or AITA format. Make it a gripping personal storytime."
 
         prompt = f"""
-You are an award-winning creative storyteller specializing in viral, dramatic Reddit storytime scripts ({cat_info['name']}).
+You are an award-winning creative storyteller specializing in viral TikTok scripts ({cat_info['name']}).
 
 THEME: {cat_info['gemini_theme']}
 
 CRITICAL RULES:
 1. TARGET LENGTH: Exactly 460 to 510 words (this will be spoken in a 3-minute video at ~160 WPM).
-2. NARRATOR: The narrator is {prompt_gender.upper()}, tagged explicitly in the opening line as "I ({gender_tag})" or "I [{gender_tag}]".
+2. NARRATOR: {narrator_rule}
 3. TONE & PACING:
    - High suspense with an intense conversational hook in sentence 1.
-   - Escalating tension and drama.
-   - Satisfying confrontation, karma, or twist ending.
+   - Escalating tension and interest.
+   - Satisfying conclusion or punchline.
 4. {format_instruction}
 5. NO META REMARKS: Do not include intros like "Here is the story:" or markdown asterisks.
 6. FORMAT: Provide ONLY the Title on line 1, followed by a blank line, and then the complete story narrative.
@@ -996,6 +1070,191 @@ def get_curated_fallback_story(
                 },
             ],
         },
+        "facts": {
+            "female": [
+                {
+                    "title": "Four disturbing psychological facts that will completely change how you see people",
+                    "body": (
+                        "Here are four unsettling psychological facts that most people go their entire lives without realizing. "
+                        "Number one: the illusion of moral superiority. Studies show that over eighty-five percent of people believe they are more ethical, empathetic, and fair than the average person. "
+                        "Psychologically, this means almost everyone who harms or betrays someone else genuinely convinces their own brain that they are the victim in the situation. "
+                        "Number two: the macabre curiosity instinct. Your brain is hardwired to seek out disturbing information, horror stories, and gruesome details not because you are twisted, "
+                        "but because evolutionary survival programming forces your subconscious to study potential threats so it can prepare for them. "
+                        "Number three: false memory implantation. Neuroscientists have proven that within just two weeks of gentle conversational suggestion, "
+                        "nearly thirty percent of adults can be led to vividly remember complex childhood traumatic events that never actually happened, complete with sensory memories of smells and sights. "
+                        "And number four: the bystander paralysis effect. If you collapse in a crowded subway station with a hundred onlookers, "
+                        "you are statistically far less likely to receive immediate help than if you collapse in an empty alleyway with only a single stranger present. "
+                        "In a crowd, every individual brain assumes someone else has already called for help, leaving you completely alone in plain sight."
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "Unsettling ocean facts that prove we know nothing about what lives down there",
+                    "body": (
+                        "Here are four chilling deep ocean facts that explain why marine biologists fear the abyss far more than outer space. "
+                        "Number one: over eighty percent of the ocean remains completely unmapped, unobserved, and unexplored by human eyes. "
+                        "We have far more high-resolution photographic maps of the surface of Mars and the dark side of the Moon than we do of our own planet's seabed. "
+                        "Number two: the Mariana Trench is nearly thirty-six thousand feet deep. If you dropped Mount Everest into the Challenger Deep, "
+                        "its snow-capped peak would still be buried under more than seven thousand feet of crushing, pitch-black water. "
+                        "At the bottom, the atmospheric pressure exceeds one thousand atmospheres, which is equivalent to having the weight of fifty jumbo jets stacked directly on top of your skull. "
+                        "Number three: the deepest living creatures survive in absolute freezing blackness where sunlight has not penetrated for billions of years. "
+                        "Many of these organisms do not rely on photosynthesis; instead, they consume toxic superheated sulfur vents and exhibit biological immortality, with lifespans stretching for centuries. "
+                        "And number four: ocean acoustic anomalies. In 1997, oceanic hydrophones detected an ultra-low frequency sound dubbed The Bloop that echoed across three thousand miles of open Pacific water. "
+                        "While scientists later attributed it to massive Antarctic icequakes, deep sea sonar stations regularly pick up unexplained biological frequency echoes moving at impossible depths that no known whale or squid could ever survive."
+                    ),
+                },
+            ],
+        },
+        "scary": {
+            "female": [
+                {
+                    "title": "I heard my own voice whispering outside my cabin window at three in the morning",
+                    "body": (
+                        "I (26F) rented a secluded timber cabin in upstate New York last autumn to finish writing my graduate thesis. "
+                        "The property sat four miles off the nearest paved county road, surrounded by dense pine forest. "
+                        "On my fourth night, around 2:45 AM, a fierce rainstorm knocked out the electrical grid, plunging the cabin into total pitch darkness. "
+                        "I lit three utility candles and curled up on the living room sofa with a book. Just after 3:15 AM, as the wind began to settle, "
+                        "I heard quiet footsteps crunching slowly across the gravel driveway right outside my front porch. My heart leaped into my throat. "
+                        "I blew out the candles and froze in complete silence. The footsteps circled the perimeter of the cabin and stopped directly beneath the bedroom window. "
+                        "Then came three soft, deliberate knuckles tapping against the glass pane. Ten seconds later, a voice whispered from the darkness outside: "
+                        "'Could you unlock the deadbolt? It is cold out here.' The terrifying part was not the request itself. It was the voice. It sounded identical to me. "
+                        "The pitch, the subtle cadence, even the distinct breathing pause between words matched my own voice perfectly. "
+                        "I grabbed my car keys and kitchen knife, locked myself in the pantry, and called county dispatch with my hands violently trembling. "
+                        "When the deputies arrived forty minutes later, they found deep bare footprints circling the exterior of the cabin three full times, leading directly into the thick woods. "
+                        "I packed everything into my car and drove away without looking back."
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "The graveyard night shift at the old hospital was supposed to be empty until the third floor elevator called",
+                    "body": (
+                        "I (28M) worked as an overnight security officer for an abandoned municipal hospital slated for demolition in downtown Chicago. "
+                        "My shift ran from 11 PM to 7 AM, and my sole duty was ensuring trespassers and metal thieves did not break into the fenced compound. "
+                        "The entire seven-story medical wing had been gutted two years prior: no beds, no medicines, and no running water. "
+                        "Only emergency exit lights and industrial power feeds to the basement remained active. "
+                        "At approximately 3:30 AM last Tuesday, the master security annunciator panel in the ground floor guard shack let out a sharp electronic chime. "
+                        "On the digital display board, the central elevator car indicator switched from 'STANDBY' to 'ACTIVE'. "
+                        "I watched the glowing numbers climb slowly from the basement to the third floor, which had once housed the pediatric palliative ward. "
+                        "The chime rang again as the mechanical doors opened on three, remained open for forty-five seconds, and then closed. "
+                        "Then, the elevator started descending straight down toward the ground floor lobby where I was sitting. "
+                        "I drew my heavy flashlight and unclipped my radio, staring down the dark terrazzo hallway toward the elevator shaft. "
+                        "When the car arrived with a mechanical thud and the stainless-steel doors slid open, the car was completely empty. "
+                        "But as I approached the threshold to reset the circuit breaker, the linoleum floor was covered in wet, muddy footprint impressions walking out of the elevator into the lobby, "
+                        "stopping exactly three feet in front of where I was standing. The footprints were small, like a child's bare feet. I clocked out right then and never returned."
+                    ),
+                },
+            ],
+        },
+        "showerthoughts": {
+            "female": [
+                {
+                    "title": "Four shower thoughts that will completely break your brain",
+                    "body": (
+                        "Here are four mind-bending shower thoughts that will genuinely alter how you perceive reality today. "
+                        "Number one: you have never actually seen your own physical face with your own eyes. "
+                        "You have only ever seen mirrored reflections, camera pixels, and still photographic prints, meaning every other person you have ever passed on the street has a more direct visual observation of your true physical appearance than you will ever have in your entire lifetime. "
+                        "Number two: every atom of iron coursing through the red blood cells inside your veins right now was forged in the violent core collapse of an exploding supernova star billions of years ago. "
+                        "You are not just living in the universe; you are the universe experiencing itself in a conscious human form. "
+                        "Number three: the concept of an expiration date. When you drink a bottle of water, you are consuming liquid that has cycled through Earth's atmosphere, oceans, and dinosaur digestive tracts for over four billion years without spoiling, "
+                        "yet we assign a plastic bottle an expiration date purely because the container itself will break down before the water ever does. "
+                        "And number four: our modern digital existence. We carry miniature glowing glass rectangles in our pockets that contain access to the entirety of human knowledge, art, and philosophy gathered over ten thousand years of civilization, "
+                        "yet humanity predominantly uses them to argue with anonymous strangers and watch videos of dancing pets. If an ancient philosopher woke up today, they would be simultaneously awestruck and utterly bewildered."
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "Mind-bending thoughts that prove time and memory are absolute illusions",
+                    "body": (
+                        "Here are four philosophical shower thoughts that prove human perception is far weirder than you think. "
+                        "Number one: the past and future do not exist anywhere in the physical universe. "
+                        "The past is nothing more than electrical patterns stored in biological brain tissue, and the future is purely a conceptual projection of your imagination. "
+                        "The only physical reality that ever actually exists anywhere across the cosmic fabric is the exact microsecond happening right now. "
+                        "Number two: when you look up into the night sky at the stars, you are literally staring millions of years into the ancient past. "
+                        "The light reaching your retinas from distant galaxies began traveling across space before human beings even discovered fire. "
+                        "Some of those bright stars died millions of years ago, but their final light show is only reaching your backyard tonight. "
+                        "Number three: your brain made the decision to watch this video roughly three hundred milliseconds before your conscious mind even felt like it made a choice. "
+                        "Neuroscience experiments repeatedly show that subconscious neurological readiness potentials fire before your internal monologue claims ownership of a decision, raising the unsettling question of who is truly steering the wheel. "
+                        "And number four: you will be the last person to ever know you have died. You remember your very first childhood memory, but because consciousness ceases at the moment of passing, you will never consciously register the final moment your life concludes. "
+                        "Cherish the present, because it is literally all you will ever have."
+                    ),
+                },
+            ],
+        },
+        "wild_history": {
+            "female": [
+                {
+                    "title": "The unbelievable true story of the woman who fell thirty-three thousand feet from an airplane and survived",
+                    "body": (
+                        "In January 1972, a twenty-two-year-old flight attendant named Vesna Vulovic was working aboard JAT Flight 367 flying at thirty-three thousand feet over Czechoslovakia. "
+                        "Mid-flight, a terrorist briefcase bomb detonated in the cargo compartment, instantly tearing the twin-engine aircraft into pieces in the freezing sky. "
+                        "While every other passenger and crew member was pulled into the air or killed in the explosion, Vesna became pinned beneath a heavy food cart inside a fractured section of the tail fuselage. "
+                        "That fuselage section plummeted six miles through the freezing atmosphere, hurtling toward the ground at terminal velocity. "
+                        "Miraculously, the wreckage crashed into a heavily sloped, snow-covered pine mountain ridge in the village of Srbska Kamenice. "
+                        "The angle of the slope, combined with dozens of thick evergreen branches and feet of soft fresh powder, acted like an immense natural deceleration cushion. "
+                        "When a local villager who had served as a combat medic in World War Two arrived at the smoking crash site, he heard faint groaning beneath the metal sheets. "
+                        "Vesna had suffered a fractured skull, two crushed vertebrae, and multiple broken ribs, but she was alive. "
+                        "Doctors placed her in an induced coma for twenty-seven days, and despite severe temporary paralysis, she made a near-total recovery and lived another forty-four years, "
+                        "earning the Guinness World Record for the highest fall survived without a parachute."
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "The insane true story of the man who survived two atomic bombs in three days",
+                    "body": (
+                        "In August 1945, Tsutomu Yamaguchi was a twenty-nine-year-old naval engineer on a business trip in Hiroshima for Mitsubishi Heavy Industries. "
+                        "On the morning of August 6th, while walking toward the docks to catch his return train home, an American B-29 bomber dropped the first atomic weapon, Little Boy, directly over the city center, less than two miles from where he stood. "
+                        "The blinding flash tore his eardrums, severely burned his torso, and threw him into an irrigation ditch. "
+                        "Despite his horrific burns, Yamaguchi bandaged his wounds, spent the night in an air raid shelter, and boarded the last evacuee train back to his hometown: Nagasaki. "
+                        "On the morning of August 9th, heavily bandaged and limping, he reported to his supervisor at the Nagasaki Mitsubishi office to deliver his engineering report. "
+                        "While his boss was openly laughing at him, accusing him of making up a story about a single bomb destroying an entire city, a second blinding flash lit up the room. "
+                        "The Fat Man atomic bomb had detonated two miles from their office. The blast shattered every window, tore the reinforced concrete walls off the building, and blew Yamaguchi across the hallway. "
+                        "Once again, he survived. Yamaguchi not only lived through both nuclear detonations in seventy-two hours, but he lived to the age of ninety-three as an outspoken global advocate for international peace, "
+                        "officially recognized as the only verified double-atomic bomb survivor in human history."
+                    ),
+                },
+            ],
+        },
+        "workplace": {
+            "female": [
+                {
+                    "title": "An entitled customer threw hot coffee on our counter and demanded I be fired, so the district attorney stepped in",
+                    "body": (
+                        "I (26F) worked as an assistant store manager at an upscale boutique bakery in Boston. "
+                        "Last Saturday morning during our busiest rush, an affluent woman in designer sunglasses marched straight past the twenty-person queue to the register. "
+                        "She slammed down a custom three-tiered cake box from our competitor down the street and aggressively demanded that we give her an immediate fifty-dollar cash refund because the frosting was melting in her warm car. "
+                        "When I politely explained that we could not refund items purchased from a completely different competitor, she went into a blind rage. "
+                        "She began screaming obscenities, knocking over our promotional acrylic displays, and hurled a steaming hot caramel latte directly across the service counter, splashing scalding liquid over my arms and uniform. "
+                        "She smirked and shouted, 'You will be working a minimum-wage dumpster for the rest of your pathetic life once I call the owner!' "
+                        "What she did not realize was that the quiet customer standing directly behind her in line, whose coat had also been splattered with hot espresso, was the deputy district attorney for our county. "
+                        "The customer immediately produced his official credentials, instructed our security guard to seal the front doors, and called the precinct commander directly. "
+                        "Two squad cars arrived within four minutes. The woman was arrested on the spot for felony battery with a dangerous weapon and disorderly conduct, weeping in handcuffs as shoppers clapped. "
+                        "Her husband later tried to offer me five thousand dollars to drop the charges; I declined, and she was sentenced to one hundred hours of mandatory community service cleaning city trash."
+                    ),
+                },
+            ],
+            "male": [
+                {
+                    "title": "An entitled customer tried to scam our luxury electronics store and got his own car towed from the fire lane",
+                    "body": (
+                        "I (28M) managed a high-end consumer audio boutique in Dallas. "
+                        "Last Friday evening, a man in an expensive suit parked his luxury German sports car diagonally across our designated emergency red fire lane right in front of our entrance, blocking the handicapped ramp. "
+                        "He walked in holding an empty box for a twelve-hundred-dollar reference turntable and demanded a full cash refund, claiming the device was defective. "
+                        "When I asked for his receipt or loyalty account number, he sneered and said receipts were for poor people, demanding I open the cash register immediately or he would have his personal attorney sue our parent company into bankruptcy. "
+                        "When I opened the box to inspect the serial number, the unit inside was a fifteen-year-old scratched plastic radio stuffed with packaging foam. "
+                        "He had bought our new system elsewhere and was trying to pull a return scam with broken junk. "
+                        "I smiled and said, 'Let me step into the back office to authorize a manager payout for this amount.' "
+                        "While in the back office, I did not authorize any cash; instead, I called the non-emergency municipal towing dispatch and the city code enforcement marshal. "
+                        "Within eight minutes, a heavy-duty flatbed tow truck backed up to the fire lane, hooked his sports car by the rear axles, and hoisted it into the air for blocking the hydrants. "
+                        "When the scammer saw his car disappearing down the boulevard through the storefront window, he sprinted into the parking lot screaming in pure panic. "
+                        "He was hit with a five-hundred-dollar impound fee, a six-hundred-dollar fire violation citation, and our corporate security banned him from every branch in North America."
+                    ),
+                },
+            ],
+        },
     }
 
     category_dict = story_database.get(cat_key, story_database["aitah"])
@@ -1030,6 +1289,11 @@ def get_story(
     - 'revenge': Sweet & petty revenge, corporate audits, property encroachments
     - 'confession': Shocking confessions, birth switches, whistleblower disclosures
     - 'aitah': Classic AITAH moral conflicts
+    - 'facts': Mind-blowing real-world facts & dark curiosities (science, psychology, ocean)
+    - 'scary': True horror, paranormal & glitch in the matrix encounters
+    - 'showerthoughts': Mind-bending shower thoughts & brain-breaking epiphanies
+    - 'wild_history': Insane true survival stories & historical feats
+    - 'workplace': Unhinged customer Karen encounters & workplace karma
 
     Args:
         source: 'auto', 'reddit', or 'gemini'.
@@ -1044,7 +1308,7 @@ def get_story(
         selected_cat = config.story_category
     else:
         # Rotate dynamically across all diverse categories
-        selected_cat = random.choice(["love", "inheritance", "entitled", "revenge", "confession", "aitah"])
+        selected_cat = random.choice(list(STORY_CATEGORIES.keys()))
 
     cat_info = STORY_CATEGORIES[selected_cat]
     logger.info("Selected story category: '%s' (%s)", selected_cat, cat_info["name"])

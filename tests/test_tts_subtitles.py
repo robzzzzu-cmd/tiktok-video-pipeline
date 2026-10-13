@@ -1,12 +1,35 @@
 """Unit tests for subtitles generation and timing calculations."""
 
 from pathlib import Path
-from src.tts_engine import WordTiming, estimate_word_timings_from_text
+from src.tts_engine import (
+    WordTiming,
+    estimate_word_timings_from_text,
+    get_voices_to_try,
+    select_voice,
+)
 from src.subtitles import (
     format_ass_time,
     build_chunks,
     generate_ass_subtitles,
 )
+
+
+def test_select_voice_and_candidates():
+    male_primary, male_fallback = select_voice("male")
+    assert male_primary != ""
+    assert male_fallback != ""
+
+    female_primary, female_fallback = select_voice("female")
+    assert female_primary != ""
+    assert female_fallback != ""
+
+    male_voices = get_voices_to_try("male")
+    assert len(male_voices) >= 3
+    assert male_primary in male_voices
+
+    female_voices = get_voices_to_try("female")
+    assert len(female_voices) >= 3
+    assert female_primary in female_voices
 
 
 def test_format_ass_time():
@@ -58,6 +81,26 @@ def test_generate_ass_subtitles(tmp_path: Path):
     assert "WORLD" in content
     # Verify alignment 5 (middle center) is configured in Style
     assert ",5,40,40," in content
+
+
+def test_generate_ass_subtitles_with_header_hook(tmp_path: Path):
+    timings = [
+        WordTiming(word="UNBELIEVABLE", start=0.0, end=0.6),
+        WordTiming(word="FACT", start=0.6, end=1.2),
+    ]
+    output_ass = tmp_path / "test_hook.ass"
+    result_path = generate_ass_subtitles(
+        word_timings=timings,
+        output_ass_path=output_ass,
+        story_title="Why My Mother Said I Was an Accident",
+        category_tag="r/AskReddit",
+    )
+
+    assert result_path.exists()
+    content = result_path.read_text(encoding="utf-8")
+    assert "HeaderHook" in content
+    assert "r/AskReddit" in content
+    assert "Why My Mother Said I Was an Accident" in content
 
 
 def test_estimate_word_timings_from_text():

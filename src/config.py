@@ -59,7 +59,10 @@ class PipelineConfig(BaseModel):
         default_factory=lambda: os.getenv("TIKTOK_COOKIES")
     )
 
-    # YouTube Background Video
+    # YouTube Background Video & Footage Library
+    bg_style: str = Field(
+        default_factory=lambda: os.getenv("BG_STYLE", "auto")  # 'auto', 'minecraft', 'subway_surfers', 'gta', 'satisfying', 'beamng'
+    )
     background_video_url: str = Field(
         default_factory=lambda: os.getenv(
             "BACKGROUND_VIDEO_URL", "https://www.youtube.com/watch?v=9or33zyZJgM"
@@ -67,6 +70,34 @@ class PipelineConfig(BaseModel):
     )
     background_video_total_seconds: int = Field(
         default_factory=lambda: int(os.getenv("BACKGROUND_VIDEO_TOTAL_SECONDS", "3600"))
+    )
+    background_video_presets: dict = Field(
+        default_factory=lambda: {
+            "minecraft": [
+                "https://www.youtube.com/watch?v=9or33zyZJgM",
+                "https://www.youtube.com/watch?v=intRX7BRGa0",
+                "https://www.youtube.com/watch?v=n_Dv4JMiwK8",
+            ],
+            "subway_surfers": [
+                "https://www.youtube.com/watch?v=tPEE9ZW8OP0",
+                "https://www.youtube.com/watch?v=zZ7AimPACzc",
+                "https://www.youtube.com/watch?v=0k5kPuhzE84",
+            ],
+            "gta": [
+                "https://www.youtube.com/watch?v=9PqN5qH80h0",
+                "https://www.youtube.com/watch?v=k5q4J6gVf_I",
+                "https://www.youtube.com/watch?v=U0k9z_sU_eU",
+            ],
+            "satisfying": [
+                "https://www.youtube.com/watch?v=nE5f_8W7k9s",
+                "https://www.youtube.com/watch?v=VF7b4Q7_7i4",
+                "https://www.youtube.com/watch?v=8mG5Q3m3dF8",
+            ],
+            "beamng": [
+                "https://www.youtube.com/watch?v=p4v3H1mB9nE",
+                "https://www.youtube.com/watch?v=9or33zyZJgM",
+            ],
+        }
     )
     youtube_cookies: Optional[str] = Field(
         default_factory=lambda: os.getenv("YOUTUBE_COOKIES")
@@ -90,7 +121,7 @@ class PipelineConfig(BaseModel):
         default_factory=lambda: os.getenv("STORY_SOURCE", "auto")  # 'auto', 'reddit', 'gemini'
     )
     story_category: str = Field(
-        default_factory=lambda: os.getenv("STORY_CATEGORY", "auto")  # 'auto', 'love', 'inheritance', 'entitled', 'revenge', 'confession', 'aitah'
+        default_factory=lambda: os.getenv("STORY_CATEGORY", "auto")  # 'auto', 'love', 'inheritance', 'entitled', 'revenge', 'confession', 'aitah', 'facts', 'scary', 'showerthoughts', 'wild_history', 'workplace'
     )
     subreddits: List[str] = Field(
         default_factory=lambda: [
@@ -104,7 +135,29 @@ class PipelineConfig(BaseModel):
             "offmychest",
             "MaliciousCompliance",
             "AITAH",
+            "todayilearned",
+            "damnthatsinteresting",
+            "nosleep",
+            "Glitch_in_the_Matrix",
+            "Showerthoughts",
+            "HistoryAnecdotes",
+            "TalesFromRetail",
         ]
+    )
+    category_colors: dict = Field(
+        default_factory=lambda: {
+            "love": "&H0000FFFF&",           # Yellow
+            "inheritance": "&H0000D7FF&",    # Gold
+            "entitled": "&H0020A5FF&",       # Amber Orange
+            "revenge": "&H0032CD32&",        # Lime Green
+            "confession": "&H00D020FF&",     # Magenta
+            "aitah": "&H0000FFFF&",          # Yellow
+            "facts": "&H00FFFF00&",          # Cyan
+            "scary": "&H000000FF&",          # Crimson Red
+            "showerthoughts": "&H00FFBF00&", # Sky Blue
+            "wild_history": "&H00008CFF&",   # Dark Orange
+            "workplace": "&H0000E5FF&",      # Amber
+        }
     )
     target_words_min: int = Field(
         default_factory=lambda: int(os.getenv("TARGET_WORDS_MIN", "450"))

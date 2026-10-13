@@ -25,7 +25,7 @@ on:
           - male
           - female
       category:
-        description: 'Story category (auto, love, inheritance, entitled, revenge, confession, or aitah)'
+        description: 'Story category (auto, love, inheritance, entitled, revenge, confession, aitah, facts, scary, showerthoughts, wild_history, or workplace)'
         required: true
         default: 'auto'
         type: choice
@@ -37,6 +37,23 @@ on:
           - revenge
           - confession
           - aitah
+          - facts
+          - scary
+          - showerthoughts
+          - wild_history
+          - workplace
+      bg_style:
+        description: 'Background visual style (auto, minecraft, subway_surfers, gta, satisfying, or beamng)'
+        required: true
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - minecraft
+          - subway_surfers
+          - gta
+          - satisfying
+          - beamng
       dry_run:
         description: 'Simulate TikTok upload without actual posting'
         required: false
@@ -76,6 +93,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install --upgrade --no-cache-dir edge-tts gTTS
           pip install -r requirements.txt
 
       - name: Install Playwright Chromium (Fallback Uploader)
@@ -106,7 +124,8 @@ jobs:
           SOURCE="${{ inputs.source || 'auto' }}"
           GENDER="${{ inputs.gender || 'auto' }}"
           CATEGORY="${{ inputs.category || 'auto' }}"
-          FLAGS="--source $SOURCE --gender $GENDER --category $CATEGORY"
+          BG_STYLE="${{ inputs.bg_style || 'auto' }}"
+          FLAGS="--source $SOURCE --gender $GENDER --category $CATEGORY --bg-style $BG_STYLE"
 
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             FLAGS="$FLAGS --dry-run"

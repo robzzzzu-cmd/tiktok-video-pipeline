@@ -68,11 +68,17 @@ def test_curated_fallback_stories():
 
 
 def test_curated_fallback_all_categories():
-    for cat in ["love", "inheritance", "entitled", "revenge", "confession", "aitah"]:
+    categories = [
+        "love", "inheritance", "entitled", "revenge", "confession",
+        "aitah", "facts", "scary", "showerthoughts", "wild_history", "workplace"
+    ]
+    for cat in categories:
         story_f = get_curated_fallback_story("female", category=cat)
         assert story_f.word_count > 100
+        assert story_f.title != ""
         story_m = get_curated_fallback_story("male", category=cat)
         assert story_m.word_count > 100
+        assert story_m.title != ""
 
 
 def test_clean_story_title():

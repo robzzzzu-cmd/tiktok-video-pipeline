@@ -47,3 +47,16 @@ def test_download_background_music_cached(tmp_path):
     assert result == cached
     assert result.exists()
 
+
+def test_background_video_presets():
+    from src.config import config
+    assert "minecraft" in config.background_video_presets
+    assert "subway_surfers" in config.background_video_presets
+    assert "gta" in config.background_video_presets
+    assert "satisfying" in config.background_video_presets
+    assert "beamng" in config.background_video_presets
+    for style, urls in config.background_video_presets.items():
+        assert len(urls) >= 1
+        for u in urls:
+            assert u.startswith("https://")
+

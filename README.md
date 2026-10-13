@@ -206,7 +206,8 @@ pytest tests/ -v
 | Argument | Default | Choices | Description |
 | :--- | :---: | :---: | :--- |
 | `--source` | `auto` | `auto`, `reddit`, `gemini` | Source for story ingestion. |
-| `--category` | `auto` | `auto`, `love`, `inheritance`, `entitled`, `aitah` | Topic category for viral stories (relationships, inheritance feuds, roommate/entitled drama, AITA). |
+| `--category` | `auto` | `auto`, `love`, `inheritance`, `entitled`, `revenge`, `confession`, `aitah`, `facts`, `scary`, `showerthoughts`, `wild_history`, `workplace` | Topic category for viral stories (relationships, inheritance feuds, entitled drama, confessions, mind-blowing facts, true horror, shower thoughts, wild history, retail chaos). |
+| `--bg-style` | `auto` | `auto`, `minecraft`, `subway_surfers`, `gta`, `satisfying`, `beamng` | Background visual style (Minecraft parkour, Subway Surfers gameplay, GTA 5 mega ramps, satisfying ASMR, BeamNG crashes, or auto-randomized). |
 | `--gender` | `auto` | `auto`, `male`, `female` | Narrator voice gender. `auto` detects from story markers. |
 | `--subreddit` | `None` | Any subreddit name | Specific subreddit to fetch from. |
 | `--dry-run` | `False` | Flag | Simulates TikTok upload without contacting remote servers. |
