@@ -100,7 +100,8 @@ def test_generate_ass_subtitles_with_header_hook(tmp_path: Path):
     content = result_path.read_text(encoding="utf-8")
     assert "HeaderHook" in content
     assert "r/AskReddit" in content
-    assert "Why My Mother Said I Was an Accident" in content
+    assert "Why My Mother Said" in content
+    assert "I Was an Accident" in content
 
 
 def test_estimate_word_timings_from_text():

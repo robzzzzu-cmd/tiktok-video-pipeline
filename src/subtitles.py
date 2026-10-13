@@ -141,7 +141,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     # Optional viral hook header for opening seconds
     if story_title:
-        tag_str = f"[ {category_tag.upper()} ]" if category_tag else "[ r/AskReddit ]"
+        if category_tag:
+            tag_str = f"[ {category_tag} ]" if category_tag.startswith("r/") else f"[ {category_tag.upper()} ]"
+        else:
+            tag_str = "[ r/AskReddit ]"
         clean_title = story_title.strip()
         if len(clean_title) > 85:
             clean_title = clean_title[:82] + "..."
