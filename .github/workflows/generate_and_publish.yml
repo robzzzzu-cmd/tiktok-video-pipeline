@@ -119,7 +119,7 @@ jobs:
 
       - name: Install Playwright Chromium (Fallback Uploader)
         run: |
-          playwright install --with-deps chromium
+          playwright install chromium
 
       - name: Run Test Suite
         run: |
