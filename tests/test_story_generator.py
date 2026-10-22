@@ -111,8 +111,8 @@ def test_build_caption():
     assert "#fyp" in caption
     assert "#storytime" in caption
     assert "#viral" in caption
-    assert "#asmr" in caption
-    assert "#restockasmrcompilation" in caption
+    assert "#redditstories" in caption
+    assert "#redditreadings" in caption
 
 
 def test_parse_cookie_data():
