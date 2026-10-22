@@ -85,7 +85,9 @@ flowchart TD
 5. **Dual-Method TikTok Publisher (`src/tiktok_uploader.py`)**:
    - **Method A (Primary)**: TikTok Official Content Posting API (`POST /v2/post/publish/video/init/`) with automated token refresh.
    - **Method B (Fallback)**: Headless **Playwright** browser automation using a stored session cookie (`TIKTOK_SESSION_ID`).
-   - Automatically appends viral tags: `#storytime #redditstories #asmr #restock #satisfying #fyp`.
+   - **Draft / Private Upload Mode (`--privacy self_only`)**: Automatically posts to "Only you" / Private. You can open TikTok on your smartphone, add a trending sound from the TikTok library at 5% volume, and hit Publish from your personal residential IP—completely bypassing datacenter IP shadowbans!
+   - **Clean Voiceover Audio**: Background music mixing is disabled by default so the video exports with pure voiceover, preventing audio clash when attaching native TikTok sounds.
+   - Automatically appends viral niche tags: `#redditstories #storytime #redditreadings #askreddit #aitah #viral #fyp`.
 
 ---
 

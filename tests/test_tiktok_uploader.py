@@ -37,3 +37,13 @@ def test_parse_cookie_data_header_format():
     names = [c["name"] for c in cookies]
     assert "sessionid" in names
     assert "ttwid" in names
+
+
+def test_tiktok_config_defaults():
+    from src.config import config
+    assert config.tiktok_privacy_level == "SELF_ONLY"
+    assert config.include_background_music is False
+    assert "#redditstories" in config.hashtags
+    assert "#restockasmrcompilation" not in config.hashtags
+    assert config.tts_rate == "+13%"
+

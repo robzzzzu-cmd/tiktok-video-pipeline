@@ -54,6 +54,27 @@ on:
           - gta
           - satisfying
           - beamng
+      privacy:
+        description: 'Upload privacy level (self_only: Private/Draft for phone review, or public)'
+        required: true
+        default: 'self_only'
+        type: choice
+        options:
+          - self_only
+          - public
+      length:
+        description: 'Target story length (short: 60-80s high retention, or full: 3.5m)'
+        required: true
+        default: 'short'
+        type: choice
+        options:
+          - short
+          - full
+      include_bg_music:
+        description: 'Mix background music into video (leave false for clean audio to add trending sound in TikTok)'
+        required: false
+        default: false
+        type: boolean
       dry_run:
         description: 'Simulate TikTok upload without actual posting'
         required: false
@@ -125,7 +146,13 @@ jobs:
           GENDER="${{ inputs.gender || 'auto' }}"
           CATEGORY="${{ inputs.category || 'auto' }}"
           BG_STYLE="${{ inputs.bg_style || 'auto' }}"
-          FLAGS="--source $SOURCE --gender $GENDER --category $CATEGORY --bg-style $BG_STYLE"
+          PRIVACY="${{ inputs.privacy || 'self_only' }}"
+          LENGTH="${{ inputs.length || 'short' }}"
+          FLAGS="--source $SOURCE --gender $GENDER --category $CATEGORY --bg-style $BG_STYLE --privacy $PRIVACY --length $LENGTH"
+
+          if [ "${{ inputs.include_bg_music }}" = "true" ]; then
+            FLAGS="$FLAGS --include-bg-music"
+          fi
 
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             FLAGS="$FLAGS --dry-run"

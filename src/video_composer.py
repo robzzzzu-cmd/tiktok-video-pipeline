@@ -530,11 +530,6 @@ def render_final_video(
     if output_video.exists():
         output_video.unlink()
 
-    # Ensure quiet background music track is ready
-    if background_music is None or not background_music.exists():
-        bg_music_file = output_video.parent / "bg_music.mp3"
-        background_music = download_background_music(config.background_music_url, bg_music_file)
-
     # Prepare escaped subtitle and font paths
     escaped_subtitles = escape_ffmpeg_filter_path(subtitles_ass)
     escaped_fontsdir = escape_ffmpeg_filter_path(config.fonts_dir)
@@ -549,28 +544,42 @@ def render_final_video(
         f"subtitles='{escaped_subtitles}':fontsdir='{escaped_fontsdir}'[v]"
     )
 
-    # Audio filter: duck quiet background music, mix with full voiceover
-    # Note: background video sound [0:a] is completely removed/discarded!
-    # normalize=0 ensures voice stays at 100% full volume and music is mixed at exact target level
-    audio_filter = (
-        f"[2:a]volume={config.bg_music_volume_db}[bg_music];"
-        f"[1:a]volume=1.0[voice];"
-        f"[voice][bg_music]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]"
-    )
-    filter_complex = f"{video_filter};{audio_filter}"
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-stream_loop", "-1",
-        "-i", str(background_video),
-        "-i", str(voiceover_audio),
-        "-stream_loop", "-1",
-        "-i", str(background_music),
-        "-filter_complex", filter_complex,
-        "-map", "[v]",
-        "-map", "[a]",
-    ]
+    has_music = bool(background_music and background_music.exists())
+    if has_music:
+        # Audio filter: duck quiet background music, mix with full voiceover
+        # Note: background video sound [0:a] is completely removed/discarded!
+        # normalize=0 ensures voice stays at 100% full volume and music is mixed at exact target level
+        audio_filter = (
+            f"[2:a]volume={config.bg_music_volume_db}[bg_music];"
+            f"[1:a]volume=1.0[voice];"
+            f"[voice][bg_music]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]"
+        )
+        filter_complex = f"{video_filter};{audio_filter}"
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-stream_loop", "-1",
+            "-i", str(background_video),
+            "-i", str(voiceover_audio),
+            "-stream_loop", "-1",
+            "-i", str(background_music),
+            "-filter_complex", filter_complex,
+            "-map", "[v]",
+            "-map", "[a]",
+        ]
+    else:
+        # Clean voiceover audio only (allows adding native TikTok trending sound in-app)
+        filter_complex = f"{video_filter}"
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-stream_loop", "-1",
+            "-i", str(background_video),
+            "-i", str(voiceover_audio),
+            "-filter_complex", filter_complex,
+            "-map", "[v]",
+            "-map", "1:a",
+        ]
 
     cmd.extend([
         "-c:v", "libx264",

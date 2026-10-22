@@ -58,6 +58,9 @@ class PipelineConfig(BaseModel):
     tiktok_cookies: Optional[str] = Field(
         default_factory=lambda: os.getenv("TIKTOK_COOKIES")
     )
+    tiktok_privacy_level: str = Field(
+        default_factory=lambda: os.getenv("TIKTOK_PRIVACY_LEVEL", "SELF_ONLY")  # 'SELF_ONLY' (Draft / Only You) or 'PUBLIC_TO_EVERYONE'
+    )
 
     # YouTube Background Video & Footage Library
     bg_style: str = Field(
@@ -112,11 +115,17 @@ class PipelineConfig(BaseModel):
             else "https://www.tiktok.com/music/son-original-7306937893019274016"
         )
     )
+    include_background_music: bool = Field(
+        default_factory=lambda: os.getenv("INCLUDE_BACKGROUND_MUSIC", "false").lower() in ("true", "1", "yes")
+    )
     bg_music_volume_db: str = Field(
         default_factory=lambda: os.getenv("BG_MUSIC_VOLUME_DB") or "-17dB"
     )
 
     # Story & Voice Settings
+    video_length: str = Field(
+        default_factory=lambda: os.getenv("VIDEO_LENGTH", "short")  # 'short' (~60-80s) or 'full' (~3.5m)
+    )
     story_source: str = Field(
         default_factory=lambda: os.getenv("STORY_SOURCE", "auto")  # 'auto', 'reddit', 'gemini'
     )
@@ -160,10 +169,10 @@ class PipelineConfig(BaseModel):
         }
     )
     target_words_min: int = Field(
-        default_factory=lambda: int(os.getenv("TARGET_WORDS_MIN", "450"))
+        default_factory=lambda: int(os.getenv("TARGET_WORDS_MIN", "180" if os.getenv("VIDEO_LENGTH", "short") == "short" else "450"))
     )
     target_words_max: int = Field(
-        default_factory=lambda: int(os.getenv("TARGET_WORDS_MAX", "520"))
+        default_factory=lambda: int(os.getenv("TARGET_WORDS_MAX", "240" if os.getenv("VIDEO_LENGTH", "short") == "short" else "520"))
     )
 
     # Voice Profiles
@@ -171,6 +180,9 @@ class PipelineConfig(BaseModel):
     voice_male_fallback: str = "en-US-GuyNeural"
     voice_female_primary: str = "en-US-JennyNeural"
     voice_female_fallback: str = "en-US-AriaNeural"
+    tts_rate: str = Field(
+        default_factory=lambda: os.getenv("TTS_RATE", "+13%")
+    )
 
     # Subtitle Styles (ASS)
     font_name: str = "Montserrat ExtraBold"
@@ -192,13 +204,13 @@ class PipelineConfig(BaseModel):
     # Publishing Metadata
     hashtags: List[str] = Field(
         default_factory=lambda: [
-            "#fyp",
-            "#storytime",
-            "#viral",
-            "#asmr",
-            "#restockasmrcompilation",
-            "#satisfying",
             "#redditstories",
+            "#storytime",
+            "#redditreadings",
+            "#askreddit",
+            "#aitah",
+            "#viral",
+            "#fyp",
         ]
     )
 

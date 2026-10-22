@@ -125,7 +125,7 @@ async def _synthesize_edge_tts(
     word_timings: List[WordTiming] = []
 
     communicate = edge_tts.Communicate(
-        text=text, voice=voice, rate="+0%", pitch="+0Hz", boundary="WordBoundary"
+        text=text, voice=voice, rate=config.tts_rate, pitch="+0Hz", boundary="WordBoundary"
     )
 
     with open(output_audio, "wb") as f_out:

@@ -37,11 +37,27 @@ def run_pipeline(
     subreddit: Optional[str] = None,
     category: str = "auto",
     bg_style: str = "auto",
+    privacy: str = "self_only",
+    length: str = "short",
+    include_bg_music: bool = False,
     dry_run: bool = False,
     skip_upload: bool = False,
     keep_temp: bool = False,
 ) -> Path:
     """Runs the end-to-end video generation and auto-publishing workflow."""
+    if privacy:
+        config.tiktok_privacy_level = "SELF_ONLY" if privacy.lower() in ("self_only", "self", "private", "draft") else "PUBLIC_TO_EVERYONE"
+    if length:
+        config.video_length = length
+        if length == "short":
+            config.target_words_min = 180
+            config.target_words_max = 240
+        elif length == "full":
+            config.target_words_min = 450
+            config.target_words_max = 520
+    if include_bg_music is not None:
+        config.include_background_music = include_bg_music
+
     timestamp_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
     temp_run_dir = config.temp_dir / f"run_{timestamp_str}"
     temp_run_dir.mkdir(parents=True, exist_ok=True)
@@ -53,12 +69,13 @@ def run_pipeline(
     logger.info("=========================================================")
     logger.info("Starting Automated TikTok Storytime Pipeline")
     logger.info(
-        "Run ID: %s | Source: %s | Category: %s | BG Style: %s | Dry Run: %s",
+        "Run ID: %s | Source: %s | Category: %s | Style: %s | Length: %s | Privacy: %s",
         timestamp_str,
         source,
         category,
         bg_style,
-        dry_run,
+        length,
+        config.tiktok_privacy_level,
     )
     logger.info("=========================================================")
 
@@ -111,8 +128,8 @@ def run_pipeline(
         )
         logger.info("Subtitles written to %s (highlight color: %s)", ass_path, highlight_color)
 
-        # Step 4: Background Video & Quiet Background Music
-        logger.info("[Step 4/5] Extracting random '%s' background segment and preparing quiet background music...", bg_style)
+        # Step 4: Background Video & Optional Background Music
+        logger.info("[Step 4/5] Extracting random '%s' background segment...", bg_style)
         raw_bg_path = temp_run_dir / f"background_{timestamp_str}.mp4"
         download_background_clip(
             target_duration=tts_result.duration_seconds,
@@ -120,11 +137,16 @@ def run_pipeline(
             bg_style=bg_style,
         )
 
-        bg_music_path = temp_run_dir / f"bg_music_{timestamp_str}.mp3"
-        download_background_music(
-            music_url=config.background_music_url,
-            output_path=bg_music_path,
-        )
+        bg_music_path = None
+        if config.include_background_music:
+            logger.info("Downloading quiet background music...")
+            bg_music_path = temp_run_dir / f"bg_music_{timestamp_str}.mp3"
+            download_background_music(
+                music_url=config.background_music_url,
+                output_path=bg_music_path,
+            )
+        else:
+            logger.info("Background music mixing is disabled (clean voiceover ready for native TikTok trending sound).")
 
         # Step 5: Video Compositing (ffmpeg)
         logger.info("[Step 5/5] Compositing final vertical 1080x1920 video with ffmpeg...")
@@ -229,6 +251,23 @@ def parse_arguments() -> argparse.Namespace:
         help="Background gameplay style: 'minecraft', 'subway_surfers', 'gta', 'satisfying', 'beamng', or 'auto'.",
     )
     parser.add_argument(
+        "--privacy",
+        choices=["self_only", "public"],
+        default="self_only",
+        help="TikTok upload privacy: 'self_only' (Private / Draft for phone review) or 'public'.",
+    )
+    parser.add_argument(
+        "--length",
+        choices=["short", "full"],
+        default="short",
+        help="Story length mode: 'short' (~60-80s high retention) or 'full' (~3.5m).",
+    )
+    parser.add_argument(
+        "--include-bg-music",
+        action="store_true",
+        help="Mix background music into the MP4 (disabled by default for native in-app sound addition).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Execute the full pipeline and simulate TikTok upload without actual posting.",
@@ -273,6 +312,9 @@ def main() -> None:
             subreddit=args.subreddit,
             category=args.category,
             bg_style=args.bg_style,
+            privacy=args.privacy,
+            length=args.length,
+            include_bg_music=args.include_bg_music,
             dry_run=args.dry_run,
             skip_upload=args.skip_upload,
             keep_temp=args.keep_temp,

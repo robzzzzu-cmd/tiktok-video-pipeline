@@ -74,10 +74,15 @@ def upload_via_tiktok_api(video_path: Path, title: str) -> bool:
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json; charset=UTF-8",
     }
+    privacy_setting = (
+        "SELF_ONLY"
+        if config.tiktok_privacy_level in ("SELF_ONLY", "PRIVATE", "private", "self", "draft")
+        else "PUBLIC_TO_EVERYONE"
+    )
     payload = {
         "post_info": {
             "title": caption,
-            "privacy_level": "PUBLIC_TO_EVERYONE",
+            "privacy_level": privacy_setting,
             "disable_duet": False,
             "disable_stitch": False,
             "disable_comment": False,
@@ -465,6 +470,61 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 logger.warning("Could not find dedicated caption element; checking generic inputs.")
 
             page.screenshot(path=str(screenshot_dir / "03_caption_entered.png"))
+
+            # Configure Privacy Level ("Only you" / "Private" for manual phone draft review)
+            if config.tiktok_privacy_level in ("SELF_ONLY", "PRIVATE", "private", "self", "draft"):
+                logger.info("Configuring TikTok privacy setting to Private ('Only you' / Draft)...")
+                privacy_set = False
+                for s in search_scopes:
+                    if privacy_set:
+                        break
+                    try:
+                        # 1. Direct radio/label selection
+                        for label in ["Only you", "Private", "Only me"]:
+                            el = (
+                                s.query_selector(f'label:has-text("{label}")')
+                                or s.query_selector(f'div[role="radio"]:has-text("{label}")')
+                                or s.query_selector(f'span:text-is("{label}")')
+                            )
+                            if el:
+                                el.scroll_into_view_if_needed()
+                                el.click(timeout=2000, force=True)
+                                logger.info("Clicked privacy option '%s'", label)
+                                page.wait_for_timeout(500)
+                                privacy_set = True
+                                break
+                    except Exception as e_p1:
+                        logger.debug("Privacy radio option check: %s", e_p1)
+
+                if not privacy_set:
+                    # 2. Dropdown menu selection
+                    for s in search_scopes:
+                        if privacy_set:
+                            break
+                        try:
+                            dropdown = (
+                                s.query_selector('div[class*="select"]:has-text("Public")')
+                                or s.query_selector('div[role="combobox"]:has-text("Public")')
+                                or s.query_selector('div[class*="select"]:has-text("Friends")')
+                            )
+                            if dropdown:
+                                dropdown.scroll_into_view_if_needed()
+                                dropdown.click(timeout=2000, force=True)
+                                page.wait_for_timeout(600)
+                                for opt_label in ["Only you", "Private", "Only me"]:
+                                    opt = page.query_selector(
+                                        f'div[role="option"]:has-text("{opt_label}"), li:has-text("{opt_label}")'
+                                    )
+                                    if opt:
+                                        opt.click(timeout=2000, force=True)
+                                        logger.info("Selected dropdown privacy option '%s'", opt_label)
+                                        page.wait_for_timeout(500)
+                                        privacy_set = True
+                                        break
+                        except Exception as e_p2:
+                            logger.debug("Privacy dropdown check: %s", e_p2)
+
+                page.screenshot(path=str(screenshot_dir / "03b_privacy_configured.png"))
 
             # Scroll down to reveal bottom footer action bar (Post button)
             logger.info("Scrolling down to reveal footer action buttons...")

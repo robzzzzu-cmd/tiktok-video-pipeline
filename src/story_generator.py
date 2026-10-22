@@ -612,15 +612,16 @@ You are an award-winning creative storyteller specializing in viral TikTok scrip
 THEME: {cat_info['gemini_theme']}
 
 CRITICAL RULES:
-1. TARGET LENGTH: Exactly 460 to 510 words (this will be spoken in a 3-minute video at ~160 WPM).
+1. TARGET LENGTH: Exactly {config.target_words_min} to {config.target_words_max} words (fast-paced viral TikTok delivery at ~160 WPM).
 2. NARRATOR: {narrator_rule}
 3. TONE & PACING:
    - High suspense with an intense conversational hook in sentence 1.
    - Escalating tension and interest.
    - Satisfying conclusion or punchline.
 4. {format_instruction}
-5. NO META REMARKS: Do not include intros like "Here is the story:" or markdown asterisks.
-6. FORMAT: Provide ONLY the Title on line 1, followed by a blank line, and then the complete story narrative.
+5. CALL-TO-ACTION: End with a single provocative question that compels viewers to debate in the comments (e.g. 'Am I in the wrong here? Be honest below', 'What would you have done? Let me know in the comments').
+6. NO META REMARKS: Do not include intros like "Here is the story:" or markdown asterisks.
+7. FORMAT: Provide ONLY the Title on line 1, followed by a blank line, and then the complete story narrative.
 """
 
         response = client.models.generate_content(
@@ -1263,13 +1264,16 @@ def get_curated_fallback_story(
 
     cleaned_title = clean_story_title(chosen["title"], category=cat_key)
     cleaned_body = clean_text_for_narration(chosen["body"], category=cat_key)
+    final_body = trim_to_target_words(
+        cleaned_body, config.target_words_min, config.target_words_max
+    )
 
     return Story(
         title=cleaned_title,
-        body=cleaned_body,
+        body=final_body,
         narrator_gender=target_gender,
         source="curated_library",
-        word_count=len(cleaned_body.split()),
+        word_count=len(final_body.split()),
         tags=["curated", "viral_storytime", cat_key],
     )
 
