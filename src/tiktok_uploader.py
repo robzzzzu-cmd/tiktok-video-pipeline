@@ -302,11 +302,52 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/124.0.0.0 Safari/537.36"
                 ),
+                locale="en-US",
+                timezone_id="America/New_York",
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                    "Sec-Ch-Ua-Mobile": "?0",
+                    "Sec-Ch-Ua-Platform": '"Windows"',
+                },
             )
-            # Remove navigator.webdriver flag
-            context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            # Comprehensive anti-detection & browser stealth injection
+            context.add_init_script("""
+                // Mask webdriver
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
 
-            # Set cookies into context
+                // Mock window.chrome
+                window.chrome = {
+                    runtime: {},
+                    loadTimes: function() {},
+                    csi: function() {},
+                    app: {}
+                };
+
+                // Mock navigator.plugins
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [
+                        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+                        { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
+                    ]
+                });
+
+                // Mock languages
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en']
+                });
+
+                // Mask WebGL vendor/renderer away from SwiftShader/llvmpipe
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) return 'Intel Inc.';
+                    if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics';
+                    return getParameter.apply(this, arguments);
+                };
+            """)
+
+            # Set cookies into context once before opening page
             if cookies_to_inject:
                 try:
                     context.add_cookies(cookies_to_inject)
@@ -316,26 +357,11 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
             page = context.new_page()
 
-            # First navigate to homepage to establish session tokens
-            try:
-                logger.info("Establishing initial TikTok session...")
-                page.goto("https://www.tiktok.com/", wait_until="domcontentloaded", timeout=20000)
-                page.wait_for_timeout(2000)
-            except Exception as e_home:
-                logger.info("Homepage handshake note: %s", e_home)
-
-            # Re-ensure cookies are set
-            if cookies_to_inject:
-                try:
-                    context.add_cookies(cookies_to_inject)
-                except Exception:
-                    pass
-
-            # Try upload portals
+            # Navigate directly to Creator Studio upload portal (skipping consumer homepage to avoid session conflicts)
             upload_urls = [
                 "https://www.tiktok.com/tiktokstudio/upload",
-                "https://www.tiktok.com/upload",
                 "https://www.tiktok.com/creator-center/upload",
+                "https://www.tiktok.com/upload",
             ]
             upload_loaded = False
             for target_url in upload_urls:
