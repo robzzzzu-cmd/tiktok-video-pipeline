@@ -40,6 +40,7 @@ def run_pipeline(
     privacy: str = "self_only",
     length: str = "short",
     include_bg_music: bool = False,
+    fail_on_upload_error: bool = False,
     dry_run: bool = False,
     skip_upload: bool = False,
     keep_temp: bool = False,
@@ -57,6 +58,8 @@ def run_pipeline(
             config.target_words_max = 520
     if include_bg_music is not None:
         config.include_background_music = include_bg_music
+    if fail_on_upload_error:
+        config.fail_on_upload_error = True
 
     timestamp_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
     temp_run_dir = config.temp_dir / f"run_{timestamp_str}"
@@ -170,13 +173,30 @@ def run_pipeline(
                 dry_run=dry_run,
             )
             logger.info("Publish result: %s", upload_result)
+
+            has_creds = bool(config.tiktok_access_token or config.tiktok_session_id or config.tiktok_cookies)
+            if not dry_run and has_creds and upload_result.get("status") not in ("success", "simulated"):
+                fail_reason = upload_result.get("reason", "unknown")
+                fail_msg = upload_result.get("message", "Upload failed")
+                # High-visibility GitHub Actions error annotation in UI
+                print(f"::error title=TikTok Upload Failed::[{fail_reason}] {fail_msg}")
+                logger.error("=========================================================")
+                logger.error("CRITICAL: Video rendering succeeded, but TikTok upload FAILED!")
+                logger.error("Failure Reason: %s", fail_reason)
+                logger.error("Message: %s", fail_msg)
+                logger.error("Download workflow artifact 'temp/playwright_debug/*.png' for screenshots.")
+                logger.error("=========================================================")
+                if config.fail_on_upload_error:
+                    raise RuntimeError(f"TikTok upload failed ({fail_reason}): {fail_msg}")
         else:
             logger.info("Upload skipped via --skip-upload flag.")
+
+        run_status = "completed" if upload_result.get("status") in ("success", "simulated", "skipped") else "upload_failed"
 
         # Save run summary
         summary = {
             "timestamp": timestamp_str,
-            "status": "completed",
+            "status": run_status,
             "category": matched_cat,
             "bg_style": bg_style,
             "story": {
@@ -268,6 +288,11 @@ def parse_arguments() -> argparse.Namespace:
         help="Mix background music into the MP4 (disabled by default for native in-app sound addition).",
     )
     parser.add_argument(
+        "--fail-on-upload-error",
+        action="store_true",
+        help="Raise an error and fail the pipeline job if TikTok upload fails.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Execute the full pipeline and simulate TikTok upload without actual posting.",
@@ -315,6 +340,7 @@ def main() -> None:
             privacy=args.privacy,
             length=args.length,
             include_bg_music=args.include_bg_music,
+            fail_on_upload_error=args.fail_on_upload_error,
             dry_run=args.dry_run,
             skip_upload=args.skip_upload,
             keep_temp=args.keep_temp,

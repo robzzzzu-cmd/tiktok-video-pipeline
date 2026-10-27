@@ -61,6 +61,9 @@ class PipelineConfig(BaseModel):
     tiktok_privacy_level: str = Field(
         default_factory=lambda: os.getenv("TIKTOK_PRIVACY_LEVEL", "SELF_ONLY")  # 'SELF_ONLY' (Draft / Only You) or 'PUBLIC_TO_EVERYONE'
     )
+    fail_on_upload_error: bool = Field(
+        default_factory=lambda: os.getenv("FAIL_ON_UPLOAD_ERROR", "false").lower() in ("true", "1", "yes")
+    )
 
     # YouTube Background Video & Footage Library
     bg_style: str = Field(

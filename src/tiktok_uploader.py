@@ -59,11 +59,11 @@ def refresh_tiktok_access_token() -> Optional[str]:
     return None
 
 
-def upload_via_tiktok_api(video_path: Path, title: str) -> bool:
+def upload_via_tiktok_api(video_path: Path, title: str):
     """Uploads video using the TikTok Official Content Posting API v2."""
     if not config.tiktok_access_token:
         logger.info("No TIKTOK_ACCESS_TOKEN provided; skipping API upload method.")
-        return False
+        return False, "no_access_token", "No TIKTOK_ACCESS_TOKEN configured"
 
     token = config.tiktok_access_token
     file_size = video_path.stat().st_size
@@ -113,7 +113,7 @@ def upload_via_tiktok_api(video_path: Path, title: str) -> bool:
         data = res_data.get("data")
         if not data or "upload_url" not in data:
             logger.warning("TikTok API init returned error: %s", res_data)
-            return False
+            return False, "api_init_error", f"TikTok API init error: {res_data}"
 
         upload_url = data["upload_url"]
         publish_id = data.get("publish_id")
@@ -131,7 +131,7 @@ def upload_via_tiktok_api(video_path: Path, title: str) -> bool:
         put_res = requests.put(upload_url, headers=upload_headers, data=video_bytes, timeout=120)
         if put_res.status_code not in (200, 201, 206):
             logger.warning("TikTok chunk upload failed with HTTP %d: %s", put_res.status_code, put_res.text)
-            return False
+            return False, "chunk_upload_failed", f"HTTP {put_res.status_code}: {put_res.text}"
 
         logger.info("Successfully uploaded video chunk to TikTok.")
 
@@ -151,16 +151,16 @@ def upload_via_tiktok_api(video_path: Path, title: str) -> bool:
                 status_str = st_data.get("status")
                 logger.info("Publish status for %s: %s", publish_id, status_str)
                 if status_str in ("PUBLISH_COMPLETE", "SUCCESS"):
-                    return True
+                    return True, "success", "Published via TikTok Official API"
                 if status_str in ("FAILED", "PUBLISH_FAILED"):
                     logger.error("TikTok publish failed: %s", st_data.get("fail_reason"))
-                    return False
+                    return False, "api_publish_failed", str(st_data.get("fail_reason"))
 
-        return True
+        return True, "success", "Published via TikTok Official API"
 
     except Exception as e:
         logger.error("TikTok API upload failed with exception: %s", e)
-        return False
+        return False, "api_exception", str(e)
 
 
 # -----------------------------------------------------------------------------
@@ -181,16 +181,25 @@ def parse_cookie_data(cookie_input: str) -> list[dict]:
             cleaned = []
             for c in data:
                 if isinstance(c, dict) and "name" in c and "value" in c:
+                    raw_domain = str(c.get("domain", ".tiktok.com")).strip()
+                    if raw_domain in ("www.tiktok.com", "tiktok.com") or ("tiktok.com" in raw_domain and not raw_domain.startswith(".")):
+                        raw_domain = ".tiktok.com"
+
                     cookie_dict = {
                         "name": str(c["name"]).strip(),
                         "value": str(c["value"]).strip(),
-                        "domain": str(c.get("domain", ".tiktok.com")),
+                        "domain": raw_domain,
                         "path": str(c.get("path", "/")),
                     }
                     if "secure" in c:
                         cookie_dict["secure"] = bool(c["secure"])
                     if "httpOnly" in c:
                         cookie_dict["httpOnly"] = bool(c["httpOnly"])
+
+                    same_site = str(c.get("sameSite", "")).capitalize()
+                    if same_site in ("Strict", "Lax", "None"):
+                        cookie_dict["sameSite"] = same_site
+
                     cleaned.append(cookie_dict)
             if cleaned:
                 logger.info("Successfully parsed %d cookies from JSON format.", len(cleaned))
@@ -299,7 +308,11 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
             # Set cookies into context
             if cookies_to_inject:
-                context.add_cookies(cookies_to_inject)
+                try:
+                    context.add_cookies(cookies_to_inject)
+                    logger.info("Injected %d cookies into browser context.", len(cookies_to_inject))
+                except Exception as e_cook:
+                    logger.warning("Error injecting initial cookies into browser context: %s", e_cook)
 
             page = context.new_page()
 
@@ -343,7 +356,22 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 logger.error("Session cookies rejected by TikTok; redirected to login: %s", page.url)
                 page.screenshot(path=str(screenshot_dir / "01_login_redirect.png"))
                 browser.close()
-                return False
+                return False, "login_redirect", f"Cookies rejected by TikTok, redirected to login ({page.url}). Please refresh TIKTOK_COOKIES or TIKTOK_SESSION_ID."
+
+            # Check if TikTok presented a CAPTCHA or bot verification prompt
+            for s in [page] + page.frames:
+                try:
+                    captcha_el = s.query_selector(
+                        'div[id*="captcha"], div[class*="captcha"], iframe[src*="captcha"], '
+                        'div[class*="verify-wrap"], div[id*="verify-bar"], div:has-text("Verify to continue")'
+                    )
+                    if captcha_el:
+                        logger.error("TikTok presented an interactive CAPTCHA verification challenge.")
+                        page.screenshot(path=str(screenshot_dir / "captcha_detected.png"))
+                        browser.close()
+                        return False, "captcha_challenge", "Interactive CAPTCHA verification requested by TikTok on this runner IP."
+                except Exception:
+                    pass
 
             # Find file upload input element (supports both main page and embedded iframes)
             logger.info("Locating file upload element for: %s", video_path.name)
@@ -376,7 +404,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 logger.error("Could not find file input element on page or iframes.")
                 page.screenshot(path=str(screenshot_dir / "missing_file_input.png"))
                 browser.close()
-                return False
+                return False, "missing_file_input", "Could not locate file upload element on TikTok upload portal."
 
             file_input.set_input_files(str(video_path))
             logger.info("Video file attached. Waiting for TikTok to process upload...")
@@ -394,6 +422,10 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     'button:has-text("Got it")',
                     'button:has-text("Close")',
                     'button:has-text("Dismiss")',
+                    'button:has-text("Not now")',
+                    'button:has-text("Later")',
+                    'button:has-text("OK")',
+                    'button:has-text("Agree")',
                     'div[role="dialog"] button',
                     'button[aria-label="Close"]',
                 ]:
@@ -686,16 +718,16 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 page.screenshot(path=str(screenshot_dir / "05_final_published.png"))
                 logger.info("Playwright auto-publish workflow completed successfully.")
                 browser.close()
-                return True
+                return True, "success", "Video published successfully via Playwright."
             else:
                 logger.warning("Post button was not enabled within the timeout.")
                 page.screenshot(path=str(screenshot_dir / "post_timeout.png"))
                 browser.close()
-                return False
+                return False, "post_timeout", "Video processing or transcoding timed out before Post button became active."
 
     except Exception as e:
         logger.error("Playwright upload failed: %s", e)
-        return False
+        return False, "exception", str(e)
 
 
 # -----------------------------------------------------------------------------
@@ -723,31 +755,48 @@ def publish_to_tiktok(video_path: Path, title: str, dry_run: bool = False) -> Di
         }
 
     # 1. Try Official TikTok API (Method A)
+    api_failure_reason = None
     if config.tiktok_access_token:
         logger.info("Attempting TikTok Official Content Posting API (Method A)...")
-        if upload_via_tiktok_api(video_path, title):
+        res_api = upload_via_tiktok_api(video_path, title)
+        api_ok = res_api[0] if isinstance(res_api, tuple) else bool(res_api)
+        if api_ok:
             return {
                 "status": "success",
                 "method": "official_api",
                 "video_path": str(video_path),
             }
-        logger.warning("Method A failed; falling back to Method B (Playwright)...")
+        api_failure_reason = res_api[1] if isinstance(res_api, tuple) else "api_failed"
+        api_msg = res_api[2] if isinstance(res_api, tuple) else "TikTok API upload failed"
+        logger.warning("Method A failed (%s: %s); falling back to Method B (Playwright)...", api_failure_reason, api_msg)
 
     # 2. Try Playwright Session Automation (Method B)
     if config.tiktok_session_id or config.tiktok_cookies:
         logger.info("Attempting TikTok Playwright Browser Automation (Method B)...")
-        if upload_via_playwright(video_path, title):
+        res_pw = upload_via_playwright(video_path, title)
+        pw_ok = res_pw[0] if isinstance(res_pw, tuple) else bool(res_pw)
+        if pw_ok:
             return {
                 "status": "success",
                 "method": "playwright_session",
                 "video_path": str(video_path),
             }
+        pw_reason = res_pw[1] if isinstance(res_pw, tuple) else "playwright_failed"
+        pw_msg = res_pw[2] if isinstance(res_pw, tuple) else "Playwright upload failed"
+        return {
+            "status": "failed",
+            "method": "playwright_session",
+            "reason": pw_reason,
+            "message": pw_msg,
+            "video_path": str(video_path),
+        }
 
-    # No valid publish credentials found or both failed
-    logger.warning("No TikTok credentials configured or uploads failed. Video is saved locally in %s", video_path)
+    # No valid publish credentials found
+    logger.warning("No TikTok credentials configured. Video is saved locally in %s", video_path)
     return {
-        "status": "skipped_or_unauthenticated",
+        "status": "unauthenticated",
         "method": "none",
+        "reason": "no_credentials",
+        "message": "Configure TIKTOK_ACCESS_TOKEN, TIKTOK_COOKIES, or TIKTOK_SESSION_ID in secrets to enable auto-posting.",
         "video_path": str(video_path),
-        "note": "Configure TIKTOK_ACCESS_TOKEN, TIKTOK_COOKIES, or TIKTOK_SESSION_ID in secrets to enable auto-posting.",
     }

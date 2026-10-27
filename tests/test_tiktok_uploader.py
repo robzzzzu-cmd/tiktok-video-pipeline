@@ -47,3 +47,24 @@ def test_tiktok_config_defaults():
     assert "#restockasmrcompilation" not in config.hashtags
     assert config.tts_rate == "+13%"
 
+
+def test_parse_cookie_data_domain_and_samesite_normalization():
+    cookie_json = '[{"name": "sessionid", "value": "xyz123", "domain": "www.tiktok.com", "sameSite": "no_restriction"}]'
+    cookies = parse_cookie_data(cookie_json)
+    assert len(cookies) == 1
+    assert cookies[0]["name"] == "sessionid"
+    # www.tiktok.com should be normalized to .tiktok.com for cross-subdomain coverage
+    assert cookies[0]["domain"] == ".tiktok.com"
+    # invalid Playwright sameSite should be safely omitted
+    assert "sameSite" not in cookies[0]
+
+
+def test_publish_to_tiktok_dry_run(tmp_path: Path):
+    from src.tiktok_uploader import publish_to_tiktok
+    dummy_video = tmp_path / "test.mp4"
+    dummy_video.write_bytes(b"dummy")
+    res = publish_to_tiktok(dummy_video, title="Dry run story", dry_run=True)
+    assert res["status"] == "simulated"
+    assert res["method"] == "dry_run"
+
+
