@@ -41,7 +41,7 @@ def test_parse_cookie_data_header_format():
 
 def test_tiktok_config_defaults():
     from src.config import config
-    assert config.tiktok_privacy_level == "SELF_ONLY"
+    assert config.tiktok_privacy_level == "PUBLIC_TO_EVERYONE"
     assert config.include_background_music is False
     assert "#redditstories" in config.hashtags
     assert "#restockasmrcompilation" not in config.hashtags

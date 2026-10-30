@@ -55,13 +55,13 @@ on:
           - satisfying
           - beamng
       privacy:
-        description: 'Upload privacy level (self_only: Private/Draft for phone review, or public)'
+        description: 'Upload privacy level (public: Direct publication, fully hands-free, or self_only)'
         required: true
-        default: 'self_only'
+        default: 'public'
         type: choice
         options:
-          - self_only
           - public
+          - self_only
       length:
         description: 'Target story length (short: 60-80s high retention, or full: 3.5m)'
         required: true
@@ -137,6 +137,9 @@ jobs:
           TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
           TIKTOK_SESSION_ID: ${{ secrets.TIKTOK_SESSION_ID }}
           TIKTOK_COOKIES: ${{ secrets.TIKTOK_COOKIES }}
+          TIKTOK_PROXY_SERVER: ${{ secrets.TIKTOK_PROXY_SERVER || secrets.PROXY_SERVER }}
+          TIKTOK_PROXY_USERNAME: ${{ secrets.TIKTOK_PROXY_USERNAME || secrets.PROXY_USERNAME }}
+          TIKTOK_PROXY_PASSWORD: ${{ secrets.TIKTOK_PROXY_PASSWORD || secrets.PROXY_PASSWORD }}
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
           BACKGROUND_VIDEO_FALLBACK_URL: ${{ secrets.BACKGROUND_VIDEO_FALLBACK_URL }}
           BACKGROUND_MUSIC_URL: ${{ secrets.BACKGROUND_MUSIC_URL || 'https://www.tiktok.com/music/son-original-7306937893019274016' }}
@@ -146,7 +149,7 @@ jobs:
           GENDER="${{ inputs.gender || 'auto' }}"
           CATEGORY="${{ inputs.category || 'auto' }}"
           BG_STYLE="${{ inputs.bg_style || 'auto' }}"
-          PRIVACY="${{ inputs.privacy || 'self_only' }}"
+          PRIVACY="${{ inputs.privacy || 'public' }}"
           LENGTH="${{ inputs.length || 'short' }}"
           FLAGS="--source $SOURCE --gender $GENDER --category $CATEGORY --bg-style $BG_STYLE --privacy $PRIVACY --length $LENGTH"
 

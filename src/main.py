@@ -37,7 +37,7 @@ def run_pipeline(
     subreddit: Optional[str] = None,
     category: str = "auto",
     bg_style: str = "auto",
-    privacy: str = "self_only",
+    privacy: str = "public",
     length: str = "short",
     include_bg_music: bool = False,
     fail_on_upload_error: bool = False,
@@ -272,9 +272,9 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--privacy",
-        choices=["self_only", "public"],
-        default="self_only",
-        help="TikTok upload privacy: 'self_only' (Private / Draft for phone review) or 'public'.",
+        choices=["public", "self_only"],
+        default="public",
+        help="TikTok upload privacy: 'public' (Direct publication to feed, hands-free) or 'self_only'.",
     )
     parser.add_argument(
         "--length",

@@ -59,10 +59,19 @@ class PipelineConfig(BaseModel):
         default_factory=lambda: os.getenv("TIKTOK_COOKIES")
     )
     tiktok_privacy_level: str = Field(
-        default_factory=lambda: os.getenv("TIKTOK_PRIVACY_LEVEL", "SELF_ONLY")  # 'SELF_ONLY' (Draft / Only You) or 'PUBLIC_TO_EVERYONE'
+        default_factory=lambda: os.getenv("TIKTOK_PRIVACY_LEVEL", "PUBLIC_TO_EVERYONE")  # 'PUBLIC_TO_EVERYONE' (Fully hands-free) or 'SELF_ONLY'
     )
     fail_on_upload_error: bool = Field(
         default_factory=lambda: os.getenv("FAIL_ON_UPLOAD_ERROR", "false").lower() in ("true", "1", "yes")
+    )
+    tiktok_proxy_server: Optional[str] = Field(
+        default_factory=lambda: os.getenv("TIKTOK_PROXY_SERVER") or os.getenv("PROXY_SERVER")
+    )
+    tiktok_proxy_username: Optional[str] = Field(
+        default_factory=lambda: os.getenv("TIKTOK_PROXY_USERNAME") or os.getenv("PROXY_USERNAME")
+    )
+    tiktok_proxy_password: Optional[str] = Field(
+        default_factory=lambda: os.getenv("TIKTOK_PROXY_PASSWORD") or os.getenv("PROXY_PASSWORD")
     )
 
     # YouTube Background Video & Footage Library

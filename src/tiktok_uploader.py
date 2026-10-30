@@ -284,37 +284,55 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
     logger.info("Starting headless Playwright upload with %d authenticated cookies...", len(cookies_to_inject))
 
+    # Configure proxy if provided (critical for bypassing cloud datacenter IP blacklists)
+    proxy_settings = None
+    if config.tiktok_proxy_server:
+        proxy_settings = {"server": config.tiktok_proxy_server}
+        if config.tiktok_proxy_username:
+            proxy_settings["username"] = config.tiktok_proxy_username
+        if config.tiktok_proxy_password:
+            proxy_settings["password"] = config.tiktok_proxy_password
+        logger.info("Configured Playwright to route through proxy: %s", config.tiktok_proxy_server)
+
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
                 headless=True,
+                proxy=proxy_settings,
                 args=[
+                    "--headless=new",
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
+                    "--window-size=1920,1080",
                 ],
             )
+            # Match native Linux environment to prevent TLS/OS/UA mismatch detection
             context = browser.new_context(
-                viewport={"width": 1280, "height": 800},
+                viewport={"width": 1920, "height": 1080},
                 user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "Mozilla/5.0 (X11; Linux x86_64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
+                    "Chrome/128.0.0.0 Safari/537.36"
                 ),
                 locale="en-US",
                 timezone_id="America/New_York",
                 extra_http_headers={
                     "Accept-Language": "en-US,en;q=0.9",
-                    "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+                    "Sec-Ch-Ua": '"Chromium";v="128", "Google Chrome";v="128", "Not-A.Brand";v="99"',
                     "Sec-Ch-Ua-Mobile": "?0",
-                    "Sec-Ch-Ua-Platform": '"Windows"',
+                    "Sec-Ch-Ua-Platform": '"Linux"',
                 },
             )
             # Comprehensive anti-detection & browser stealth injection
             context.add_init_script("""
-                // Mask webdriver
-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                // Mask webdriver prototype
+                Object.defineProperty(Navigator.prototype, 'webdriver', {
+                    get: () => undefined,
+                    configurable: true
+                });
 
                 // Mock window.chrome
                 window.chrome = {
@@ -325,7 +343,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 };
 
                 // Mock navigator.plugins
-                Object.defineProperty(navigator, 'plugins', {
+                Object.defineProperty(Navigator.prototype, 'plugins', {
                     get: () => [
                         { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
                         { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
@@ -334,7 +352,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 });
 
                 // Mock languages
-                Object.defineProperty(navigator, 'languages', {
+                Object.defineProperty(Navigator.prototype, 'languages', {
                     get: () => ['en-US', 'en']
                 });
 
@@ -345,6 +363,17 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics';
                     return getParameter.apply(this, arguments);
                 };
+
+                // Seed localStorage from cookies to prevent empty-profile transplanted cookie detection
+                try {
+                    const rawCookies = document.cookie.split('; ');
+                    for (const c of rawCookies) {
+                        const [k, v] = c.split('=');
+                        if (k && v && (k.includes('webid') || k.includes('user_id') || k.includes('csrf'))) {
+                            localStorage.setItem(k, v);
+                        }
+                    }
+                } catch (e) {}
             """)
 
             # Set cookies into context once before opening page

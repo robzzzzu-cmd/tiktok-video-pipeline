@@ -142,6 +142,9 @@ To run this pipeline automatically on GitHub Actions, go to your repository on G
 | `BACKGROUND_VIDEO_FALLBACK_URL` | Optional | Hugging Face or direct MP4 URL to 1-hour satisfying restocking background video. Extracts a random clip on each run. |
 | `BACKGROUND_MUSIC_URL` | Optional | TikTok sound or direct audio URL for quiet background music (defaults to viral background soundtrack `son-original-7306937893019274016`). |
 | `YOUTUBE_COOKIES` | Optional | YouTube cookies export (`yt_cookies.txt`) for datacenter IP anti-bot bypass. |
+| `TIKTOK_PROXY_SERVER` | Highly Recommended | Residential HTTP/SOCKS5 proxy (e.g. `http://p.webshare.io:80` or `http://ip:port`) to completely prevent TikTok datacenter IP session resets / force-logouts. |
+| `TIKTOK_PROXY_USERNAME` | Optional | Proxy username if authentication is required. |
+| `TIKTOK_PROXY_PASSWORD` | Optional | Proxy password if authentication is required. |
 
 > [!TIP]
 > If neither `TIKTOK_ACCESS_TOKEN` nor `TIKTOK_SESSION_ID` is provided, the workflow will generate the complete video and save it as an inspectable **GitHub Workflow Artifact** without failing.
