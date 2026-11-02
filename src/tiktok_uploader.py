@@ -298,18 +298,35 @@ def verify_and_resolve_proxy(
     if port:
         candidate_ports.append(port)
     else:
-        candidate_ports.append(8080 if "webshare" in host else 80)
+        candidate_ports.append(80)
 
-    # For webshare.io, port 8080 is far more reliable on cloud runners than port 80
+    # For webshare.io, supported ports are 80, 3128, and 1080 (8080 is not supported on p.webshare.io)
     if "webshare" in host:
-        for alt_port in (8080, 80):
+        for alt_port in (80, 3128, 1080):
             if alt_port not in candidate_ports:
                 candidate_ports.append(alt_port)
 
     # Determine candidate usernames
-    candidate_users = [user] if user else [""]
-    if "webshare" in host and user and not any(tag in user for tag in ("-us", "-gb", "-de", "-fr", "-country", "_")):
-        candidate_users.append(f"{user}-us")
+    candidate_users = []
+    if "webshare" in host and user:
+        clean_user = user
+        for suffix in ("-us-rotate", "-rotate-us", "-rotate", "-us"):
+            if clean_user.endswith(suffix):
+                clean_user = clean_user[:-len(suffix)]
+                break
+        # Webshare's rotating backbone p.webshare.io REQUIRES -rotate appended to user credentials!
+        # Without -rotate, Webshare returns HTTP 407 'The proxy you are connecting is not in your list.'
+        # Priority 1: US-targeted rotating IP (guarantees US exit and unblocks TikTok)
+        candidate_users.append(f"{clean_user}-us-rotate")
+        # Priority 2: General rotating IP
+        candidate_users.append(f"{clean_user}-rotate")
+        # Priority 3: Raw user as provided
+        if user not in candidate_users:
+            candidate_users.append(user)
+    elif user:
+        candidate_users.append(user)
+    else:
+        candidate_users.append("")
 
     import requests
 
@@ -317,7 +334,8 @@ def verify_and_resolve_proxy(
     for test_port in candidate_ports:
         for test_user in candidate_users:
             auth_str = f"{quote(test_user)}:{quote(pwd)}@" if (test_user and pwd) else ""
-            proxy_url = f"{scheme}://{auth_str}{host}:{test_port}"
+            # Proxy tunnel connection scheme to proxy gateway MUST be http://
+            proxy_url = f"http://{auth_str}{host}:{test_port}"
             proxies = {"http": proxy_url, "https": proxy_url}
 
             user_disp = f"{test_user[:3]}***" if test_user else "none"
