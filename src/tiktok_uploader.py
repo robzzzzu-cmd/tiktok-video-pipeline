@@ -410,82 +410,145 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             page = context.new_page()
 
             # Navigate directly to Creator Studio upload portal (skipping consumer homepage to avoid session conflicts)
+            def dismiss_overlays(scopes):
+                for s in scopes:
+                    for sel in [
+                        'button:has-text("Got it")',
+                        'button:has-text("Get started")',
+                        'button:has-text("Get Started")',
+                        'button:has-text("Close")',
+                        'button:has-text("Dismiss")',
+                        'button:has-text("Not now")',
+                        'button:has-text("Later")',
+                        'button:has-text("OK")',
+                        'button:has-text("Agree")',
+                        'button:has-text("Accept all")',
+                        'button:has-text("Allow all")',
+                        'button[aria-label="Close"]',
+                        'div[role="dialog"] button',
+                        'div[class*="guide"] button',
+                    ]:
+                        try:
+                            btn = s.query_selector(sel)
+                            if btn and btn.is_visible():
+                                logger.info("Dismissing overlay dialog button: '%s'", sel)
+                                btn.click(timeout=1500, force=True)
+                                page.wait_for_timeout(400)
+                        except Exception:
+                            pass
+
+            def try_attach_file(scopes, file_path: Path):
+                # A: Direct file input
+                for s in scopes:
+                    for sel in [
+                        'input[type="file"]',
+                        'input[accept*="video"]',
+                        'input[accept*="mp4"]',
+                        'input[data-e2e*="upload"]',
+                    ]:
+                        try:
+                            el = s.query_selector(sel)
+                            if el:
+                                logger.info("Found file input via selector '%s' in frame '%s'", sel, s.name or "main")
+                                el.set_input_files(str(file_path))
+                                return True, s
+                        except Exception as e_inp:
+                            logger.debug("Input selector '%s' error: %s", sel, e_inp)
+
+                # B: Click upload button to trigger file chooser
+                for s in scopes:
+                    for btn_sel in [
+                        'button:has-text("Select video")',
+                        'button:has-text("Select videos")',
+                        'button:has-text("Select file")',
+                        'button:has-text("Select files")',
+                        'button:has-text("Upload")',
+                        'div[role="button"]:has-text("Select video")',
+                        'div[role="button"]:has-text("Select file")',
+                        'div[role="button"]:has-text("Select files")',
+                        'div[class*="upload-card"]',
+                        'div[class*="upload-btn"]',
+                        'div[class*="upload"] button',
+                        'button[class*="upload"]',
+                    ]:
+                        try:
+                            btn = s.query_selector(btn_sel)
+                            if btn and btn.is_visible():
+                                logger.info("Found upload button '%s'; triggering file chooser...", btn_sel)
+                                with page.expect_file_chooser(timeout=6000) as fc_info:
+                                    btn.click(force=True)
+                                fc = fc_info.value
+                                fc.set_files(str(file_path))
+                                logger.info("Attached file via file chooser on button '%s'!", btn_sel)
+                                return True, s
+                        except Exception as e_fc:
+                            logger.debug("File chooser on '%s' notice: %s", btn_sel, e_fc)
+
+                return False, None
+
+            # Navigate through candidate upload portals
             upload_urls = [
-                "https://www.tiktok.com/tiktokstudio/upload",
                 "https://www.tiktok.com/creator-center/upload",
-                "https://www.tiktok.com/upload",
+                "https://www.tiktok.com/upload?lang=en",
+                "https://www.tiktok.com/tiktokstudio/upload",
             ]
-            upload_loaded = False
+            file_attached = False
+            upload_frame = None
+
             for target_url in upload_urls:
                 logger.info("Navigating to upload portal: %s...", target_url)
                 try:
-                    page.goto(target_url, wait_until="domcontentloaded", timeout=45000)
+                    page.goto(target_url, wait_until="domcontentloaded", timeout=35000)
                     page.wait_for_timeout(3000)
-                except Exception:
-                    pass
+                except Exception as e_nav:
+                    logger.warning("Navigation notice for %s: %s", target_url, e_nav)
 
                 safe_screenshot(page, screenshot_dir / "01_page_loaded.png")
 
-                if "login" not in page.url.lower():
-                    upload_loaded = True
-                    break
-                logger.warning("Portal %s bounced to login; trying alternative...", target_url)
+                if "login" in page.url.lower():
+                    logger.warning("Portal %s bounced to login; trying alternative...", target_url)
+                    continue
 
-            if not upload_loaded or "login" in page.url.lower():
-                logger.error("Session cookies rejected by TikTok; redirected to login: %s", page.url)
-                safe_screenshot(page, screenshot_dir / "01_login_redirect.png")
-                browser.close()
-                return False, "login_redirect", f"Cookies rejected by TikTok, redirected to login ({page.url}). Please refresh TIKTOK_COOKIES or TIKTOK_SESSION_ID."
-
-            # Check if TikTok presented a CAPTCHA or bot verification prompt
-            for s in [page] + page.frames:
-                try:
-                    captcha_el = s.query_selector(
-                        'div[id*="captcha"], div[class*="captcha"], iframe[src*="captcha"], '
-                        'div[class*="verify-wrap"], div[id*="verify-bar"], div:has-text("Verify to continue")'
-                    )
-                    if captcha_el:
-                        logger.error("TikTok presented an interactive CAPTCHA verification challenge.")
-                        safe_screenshot(page, screenshot_dir / "captcha_detected.png")
-                        browser.close()
-                        return False, "captcha_challenge", "Interactive CAPTCHA verification requested by TikTok on this runner IP."
-                except Exception:
-                    pass
-
-            # Find file upload input element (supports both main page and embedded iframes)
-            logger.info("Locating file upload element for: %s", video_path.name)
-            file_input = None
-            upload_frame = None
-
-            for _ in range(6):
-                try:
-                    file_input = page.wait_for_selector('input[type="file"]', timeout=4000)
-                    if file_input:
-                        upload_frame = page
-                        break
-                except Exception:
-                    pass
-
-                for frame in page.frames:
+                # Check if TikTok presented a CAPTCHA challenge
+                for s in [page] + page.frames:
                     try:
-                        file_input = frame.query_selector('input[type="file"]')
-                        if file_input:
-                            logger.info("Found input[type='file'] inside frame: %s", frame.name or frame.url)
-                            upload_frame = frame
-                            break
+                        captcha_el = s.query_selector(
+                            'div[id*="captcha"], div[class*="captcha"], iframe[src*="captcha"], '
+                            'div[class*="verify-wrap"], div[id*="verify-bar"], div:has-text("Verify to continue")'
+                        )
+                        if captcha_el:
+                            logger.error("TikTok presented an interactive CAPTCHA verification challenge.")
+                            safe_screenshot(page, screenshot_dir / "captcha_detected.png")
+                            browser.close()
+                            return False, "captcha_challenge", "Interactive CAPTCHA verification requested by TikTok on this runner IP."
                     except Exception:
                         pass
-                if file_input:
-                    break
-                time.sleep(2)
 
-            if not file_input:
-                logger.error("Could not find file input element on page or iframes.")
+                # Dismiss any initial onboarding guide popups, cookie consent, or modal overlays
+                current_scopes = [page] + page.frames
+                dismiss_overlays(current_scopes)
+
+                logger.info("Locating file upload element on %s for: %s", target_url, video_path.name)
+                for attempt in range(6):
+                    current_scopes = [page] + page.frames
+                    dismiss_overlays(current_scopes)
+                    file_attached, upload_frame = try_attach_file(current_scopes, video_path)
+                    if file_attached:
+                        break
+                    time.sleep(2)
+
+                if file_attached:
+                    logger.info("Successfully attached video file on portal: %s!", target_url)
+                    break
+                else:
+                    logger.warning("Could not locate file upload element on %s; trying next portal...", target_url)
+
+            if not file_attached:
+                logger.error("Could not find file input element on any upload portal.")
                 safe_screenshot(page, screenshot_dir / "missing_file_input.png")
                 browser.close()
                 return False, "missing_file_input", "Could not locate file upload element on TikTok upload portal."
 
-            file_input.set_input_files(str(video_path))
             logger.info("Video file attached. Waiting for TikTok to process upload...")
             safe_screenshot(page, screenshot_dir / "02_file_selected.png")
 
@@ -494,26 +557,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
             # Prioritize searching inside the active upload frame where file was selected
             search_scopes = ([upload_frame] if upload_frame and upload_frame != page else []) + [page] + page.frames
-
-            # Dismiss any guide popups, cookie banners, or modal overlays
-            for scope in search_scopes:
-                for dismiss_selector in [
-                    'button:has-text("Got it")',
-                    'button:has-text("Close")',
-                    'button:has-text("Dismiss")',
-                    'button:has-text("Not now")',
-                    'button:has-text("Later")',
-                    'button:has-text("OK")',
-                    'button:has-text("Agree")',
-                    'div[role="dialog"] button',
-                    'button[aria-label="Close"]',
-                ]:
-                    try:
-                        btn = scope.query_selector(dismiss_selector)
-                        if btn:
-                            btn.click(timeout=1500, force=True)
-                    except Exception:
-                        pass
+            dismiss_overlays(search_scopes)
 
             # Dismiss any accidental exit dialog if already showing
             for scope in search_scopes:
