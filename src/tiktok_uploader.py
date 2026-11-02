@@ -287,12 +287,26 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
     # Configure proxy if provided (critical for bypassing cloud datacenter IP blacklists)
     proxy_settings = None
     if config.tiktok_proxy_server:
-        proxy_settings = {"server": config.tiktok_proxy_server}
-        if config.tiktok_proxy_username:
-            proxy_settings["username"] = config.tiktok_proxy_username
-        if config.tiktok_proxy_password:
-            proxy_settings["password"] = config.tiktok_proxy_password
-        logger.info("Configured Playwright to route through proxy: %s", config.tiktok_proxy_server)
+        raw_server = config.tiktok_proxy_server.strip()
+        from urllib.parse import urlparse
+        # Handle cases where user pastes full proxy URL containing credentials
+        if "@" in raw_server:
+            parsed = urlparse(raw_server if "://" in raw_server else f"http://{raw_server}")
+            scheme = parsed.scheme or "http"
+            port_str = f":{parsed.port}" if parsed.port else ""
+            clean_server = f"{scheme}://{parsed.hostname}{port_str}"
+            proxy_settings = {
+                "server": clean_server,
+                "username": parsed.username or config.tiktok_proxy_username or "",
+                "password": parsed.password or config.tiktok_proxy_password or "",
+            }
+        else:
+            proxy_settings = {"server": raw_server}
+            if config.tiktok_proxy_username:
+                proxy_settings["username"] = config.tiktok_proxy_username
+            if config.tiktok_proxy_password:
+                proxy_settings["password"] = config.tiktok_proxy_password
+        logger.info("Configured Playwright to route through proxy: %s", proxy_settings.get("server"))
 
     try:
         with sync_playwright() as p:

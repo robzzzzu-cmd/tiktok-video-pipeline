@@ -68,3 +68,14 @@ def test_publish_to_tiktok_dry_run(tmp_path: Path):
     assert res["method"] == "dry_run"
 
 
+def test_proxy_url_parsing():
+    from urllib.parse import urlparse
+    raw_server = "http://bvgafxhc:b3j3wowo1icd@p.webshare.io:80/"
+    parsed = urlparse(raw_server)
+    assert parsed.username == "bvgafxhc"
+    assert parsed.password == "b3j3wowo1icd"
+    assert parsed.hostname == "p.webshare.io"
+    assert parsed.port == 80
+
+
+
