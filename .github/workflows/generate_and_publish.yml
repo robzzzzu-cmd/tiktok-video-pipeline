@@ -151,7 +151,7 @@ jobs:
           BG_STYLE="${{ inputs.bg_style || 'auto' }}"
           PRIVACY="${{ inputs.privacy || 'public' }}"
           LENGTH="${{ inputs.length || 'short' }}"
-          FLAGS="--source $SOURCE --gender $GENDER --category $CATEGORY --bg-style $BG_STYLE --privacy $PRIVACY --length $LENGTH"
+          FLAGS="--source $SOURCE --gender $GENDER --category $CATEGORY --bg-style $BG_STYLE --privacy $PRIVACY --length $LENGTH --fail-on-upload-error"
 
           if [ "${{ inputs.include_bg_music }}" = "true" ]; then
             FLAGS="$FLAGS --include-bg-music"
