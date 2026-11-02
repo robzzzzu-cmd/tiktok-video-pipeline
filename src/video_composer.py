@@ -583,11 +583,13 @@ def render_final_video(
 
     cmd.extend([
         "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "22",
+        "-preset", "veryfast",
+        "-crf", "25",
+        "-maxrate", "3500k",
+        "-bufsize", "7000k",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
-        "-b:a", "192k",
+        "-b:a", "128k",
         "-t", f"{duration:.3f}",
         "-movflags", "+faststart",
         str(output_video),

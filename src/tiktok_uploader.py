@@ -892,13 +892,28 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                             pass
                 return None
 
-            # Wait for Post button to become enabled (wait up to 90s for video transcoding)
+            # Wait for Post button to become enabled (wait up to 240s for video upload and transcoding)
             logger.info("Waiting for video upload to finalize and authentic Post button to become enabled...")
             post_button = None
-            for attempt in range(30):
+            for attempt in range(80):
                 post_button = find_real_post_button(search_scopes)
                 if post_button:
                     break
+
+                # Check and log upload status / progress every few attempts
+                if attempt % 4 == 0:
+                    for s in search_scopes:
+                        try:
+                            for sel in ['div:has-text("%")', 'div:has-text("Uploaded")', 'div:has-text("Uploading")', 'div[class*="progress"]']:
+                                el = s.query_selector(sel)
+                                if el and el.is_visible():
+                                    t = (el.inner_text() or "").strip().replace("\n", " ")
+                                    if len(t) < 80 and ("%" in t or "upload" in t.lower()):
+                                        logger.info("TikTok upload progress notice: '%s'", t)
+                                        break
+                        except Exception:
+                            pass
+
                 # Periodically re-scroll in case dynamic content shifted
                 if attempt % 3 == 0:
                     for s in search_scopes:
@@ -923,20 +938,26 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 # Handle post-click dialogs:
                 # 1. TikTok "Continue to post?" modal (appears when Content Check Lite is in progress)
                 # It has [Cancel] and a red [Post now] button. We MUST click [Post now]!
-                for s in search_scopes:
-                    try:
-                        for post_confirm in ["Post now", "Post anyway", "Continue to post"]:
-                            confirm_btn = s.query_selector(f'div[role="dialog"] button:has-text("{post_confirm}")') or s.query_selector(f'button:has-text("{post_confirm}")')
-                            if confirm_btn:
-                                logger.info("Detected post confirmation modal button: '%s'! Clicking to confirm publication...", post_confirm)
-                                confirm_btn.click(timeout=5000, force=True)
-                                page.wait_for_timeout(5000)
-                                break
-                    except Exception as e_conf:
-                        logger.debug("Confirm dialog check error: %s", e_conf)
+                for _ in range(6):
+                    dialog_handled = False
+                    for s in search_scopes:
+                        try:
+                            for post_confirm in ["Post now", "Post anyway", "Continue to post"]:
+                                confirm_btn = s.query_selector(f'div[role="dialog"] button:has-text("{post_confirm}")') or s.query_selector(f'button:has-text("{post_confirm}")')
+                                if confirm_btn and confirm_btn.is_visible():
+                                    logger.info("Detected post confirmation modal button: '%s'! Clicking to confirm publication...", post_confirm)
+                                    confirm_btn.click(timeout=5000, force=True)
+                                    page.wait_for_timeout(4000)
+                                    dialog_handled = True
+                                    break
+                        except Exception as e_conf:
+                            logger.debug("Confirm dialog check error: %s", e_conf)
+                    if dialog_handled:
+                        break
+                    time.sleep(2)
 
                 page.wait_for_timeout(5000)
-                safe_screenshot(page, screenshot_dir / "04_after_post.png")
+                safe_screenshot(page, screenshot_dir / "04b_dialog_confirmed.png")
 
                 # 2. Only if an actual EXIT/DISCARD warning dialog appeared, cancel it and retry
                 for s in search_scopes:
