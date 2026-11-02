@@ -26,6 +26,15 @@ def build_caption(title: str, hashtags: Optional[list] = None) -> str:
     return f"{clean_title}\n\n{tags_str}"
 
 
+def safe_screenshot(target, path: Path, timeout: int = 5000) -> None:
+    """Takes a non-fatal debug screenshot without crashing if web fonts or network requests stall."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        target.screenshot(path=str(path), timeout=timeout)
+    except Exception as e_ss:
+        logger.debug("Debug screenshot skipped (%s): %s", path.name, e_ss)
+
+
 # -----------------------------------------------------------------------------
 # Method A: TikTok Official Content Posting API (v2)
 # -----------------------------------------------------------------------------
@@ -410,11 +419,12 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             for target_url in upload_urls:
                 logger.info("Navigating to upload portal: %s...", target_url)
                 try:
-                    page.goto(target_url, wait_until="networkidle", timeout=40000)
+                    page.goto(target_url, wait_until="domcontentloaded", timeout=45000)
+                    page.wait_for_timeout(3000)
                 except Exception:
                     pass
 
-                page.screenshot(path=str(screenshot_dir / "01_page_loaded.png"))
+                safe_screenshot(page, screenshot_dir / "01_page_loaded.png")
 
                 if "login" not in page.url.lower():
                     upload_loaded = True
@@ -423,7 +433,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
             if not upload_loaded or "login" in page.url.lower():
                 logger.error("Session cookies rejected by TikTok; redirected to login: %s", page.url)
-                page.screenshot(path=str(screenshot_dir / "01_login_redirect.png"))
+                safe_screenshot(page, screenshot_dir / "01_login_redirect.png")
                 browser.close()
                 return False, "login_redirect", f"Cookies rejected by TikTok, redirected to login ({page.url}). Please refresh TIKTOK_COOKIES or TIKTOK_SESSION_ID."
 
@@ -436,7 +446,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     )
                     if captcha_el:
                         logger.error("TikTok presented an interactive CAPTCHA verification challenge.")
-                        page.screenshot(path=str(screenshot_dir / "captcha_detected.png"))
+                        safe_screenshot(page, screenshot_dir / "captcha_detected.png")
                         browser.close()
                         return False, "captcha_challenge", "Interactive CAPTCHA verification requested by TikTok on this runner IP."
                 except Exception:
@@ -471,13 +481,13 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
             if not file_input:
                 logger.error("Could not find file input element on page or iframes.")
-                page.screenshot(path=str(screenshot_dir / "missing_file_input.png"))
+                safe_screenshot(page, screenshot_dir / "missing_file_input.png")
                 browser.close()
                 return False, "missing_file_input", "Could not locate file upload element on TikTok upload portal."
 
             file_input.set_input_files(str(video_path))
             logger.info("Video file attached. Waiting for TikTok to process upload...")
-            page.screenshot(path=str(screenshot_dir / "02_file_selected.png"))
+            safe_screenshot(page, screenshot_dir / "02_file_selected.png")
 
             # Wait for upload indicator / caption editor to render
             page.wait_for_timeout(10000)
@@ -570,7 +580,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             else:
                 logger.warning("Could not find dedicated caption element; checking generic inputs.")
 
-            page.screenshot(path=str(screenshot_dir / "03_caption_entered.png"))
+            safe_screenshot(page, screenshot_dir / "03_caption_entered.png")
 
             # Configure Privacy Level ("Only you" / "Private" for manual phone draft review)
             if config.tiktok_privacy_level in ("SELF_ONLY", "PRIVATE", "private", "self", "draft"):
@@ -625,7 +635,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                         except Exception as e_p2:
                             logger.debug("Privacy dropdown check: %s", e_p2)
 
-                page.screenshot(path=str(screenshot_dir / "03b_privacy_configured.png"))
+                safe_screenshot(page, screenshot_dir / "03b_privacy_configured.png")
 
             # Scroll down to reveal bottom footer action bar (Post button)
             logger.info("Scrolling down to reveal footer action buttons...")
@@ -727,7 +737,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     post_button.click(force=True)
 
                 page.wait_for_timeout(8000)
-                page.screenshot(path=str(screenshot_dir / "04_after_post.png"))
+                safe_screenshot(page, screenshot_dir / "04_after_post.png")
 
                 # Handle post-click dialogs:
                 # 1. TikTok "Continue to post?" modal (appears when Content Check Lite is in progress)
@@ -745,7 +755,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                         logger.debug("Confirm dialog check error: %s", e_conf)
 
                 page.wait_for_timeout(5000)
-                page.screenshot(path=str(screenshot_dir / "04_after_post.png"))
+                safe_screenshot(page, screenshot_dir / "04_after_post.png")
 
                 # 2. Only if an actual EXIT/DISCARD warning dialog appeared, cancel it and retry
                 for s in search_scopes:
@@ -784,13 +794,13 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                         except Exception:
                             pass
 
-                page.screenshot(path=str(screenshot_dir / "05_final_published.png"))
+                safe_screenshot(page, screenshot_dir / "05_final_published.png")
                 logger.info("Playwright auto-publish workflow completed successfully.")
                 browser.close()
                 return True, "success", "Video published successfully via Playwright."
             else:
                 logger.warning("Post button was not enabled within the timeout.")
-                page.screenshot(path=str(screenshot_dir / "post_timeout.png"))
+                safe_screenshot(page, screenshot_dir / "post_timeout.png")
                 browser.close()
                 return False, "post_timeout", "Video processing or transcoding timed out before Post button became active."
 
