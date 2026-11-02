@@ -237,9 +237,18 @@ def parse_cookie_data(cookie_input: str) -> list[dict]:
         logger.info("Successfully parsed %d cookies from Netscape cookies.txt format.", len(netscape_cookies))
         return netscape_cookies
 
-    # 3. Try Header String format: 'name=value; name2=value2'
+    # 3. Try Header String format: 'Cookie: name=value; name2=value2' or 'name=value; name2=value2'
+    raw_str = cookie_input
+    if raw_str.lower().startswith("cookie:"):
+        raw_str = raw_str[7:].strip()
+    if "-H 'cookie:" in raw_str.lower() or '-h "cookie:' in raw_str.lower() or "-h 'cookie:" in raw_str.lower():
+        import re
+        m = re.search(r'-H\s+[\'"]cookie:\s*([^\'"]+)[\'"]', raw_str, re.IGNORECASE)
+        if m:
+            raw_str = m.group(1).strip()
+
     header_cookies = []
-    pairs = cookie_input.split(";")
+    pairs = raw_str.split(";")
     for pair in pairs:
         if "=" in pair:
             k, v = pair.split("=", 1)

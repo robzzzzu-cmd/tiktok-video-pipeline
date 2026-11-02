@@ -38,6 +38,16 @@ def test_parse_cookie_data_header_format():
     assert "sessionid" in names
     assert "ttwid" in names
 
+    # With 'Cookie: ' prefix copied directly from browser devtools
+    with_prefix = "Cookie: sessionid=xyz123; ttwid=abc456"
+    cookies2 = parse_cookie_data(with_prefix)
+    assert len(cookies2) == 2
+
+    # With cURL copy format
+    curl_str = "curl 'https://www.tiktok.com' -H 'Cookie: sessionid=xyz123; ttwid=abc456'"
+    cookies3 = parse_cookie_data(curl_str)
+    assert len(cookies3) == 2
+
 
 def test_tiktok_config_defaults():
     from src.config import config
