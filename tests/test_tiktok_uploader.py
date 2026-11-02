@@ -78,4 +78,43 @@ def test_proxy_url_parsing():
     assert parsed.port == 80
 
 
+def test_verify_and_resolve_proxy_empty():
+    from src.tiktok_uploader import verify_and_resolve_proxy
+    proxy_dict, reason, msg = verify_and_resolve_proxy("")
+    assert proxy_dict is None
+    assert reason == "empty_proxy"
+
+
+def test_verify_and_resolve_proxy_mocked(monkeypatch):
+    from src.tiktok_uploader import verify_and_resolve_proxy
+    import requests
+
+    class DummyResponse:
+        def __init__(self, json_data, status_code=200):
+            self._json = json_data
+            self.status_code = status_code
+
+        def json(self):
+            return self._json
+
+    def mock_get(url, **kwargs):
+        if "ipify.org" in url:
+            return DummyResponse({"ip": "185.199.229.10"})
+        if "ip-api.com" in url:
+            return DummyResponse({"countryCode": "US"})
+        return DummyResponse({}, 200)
+
+    monkeypatch.setattr(requests, "get", mock_get)
+
+    proxy_dict, reason, msg = verify_and_resolve_proxy(
+        "http://bvgafxhc:b3j3wowo1icd@p.webshare.io:80/"
+    )
+    assert proxy_dict is not None
+    assert reason == "ok"
+    assert "p.webshare.io" in proxy_dict["server"]
+    assert proxy_dict["username"] == "bvgafxhc"
+    assert proxy_dict["password"] == "b3j3wowo1icd"
+    assert "US" in msg
+
+
 

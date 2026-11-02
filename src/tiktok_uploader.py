@@ -259,6 +259,120 @@ def parse_cookie_data(cookie_input: str) -> list[dict]:
     return []
 
 
+def verify_and_resolve_proxy(
+    raw_server: str,
+    raw_username: str = "",
+    raw_password: str = "",
+) -> tuple[dict | None, str, str]:
+    """
+    Parses and pre-flight probes proxy connectivity before launching Playwright.
+    - Extracts host, port, scheme, and credentials
+    - Tests candidate ports (auto-fallbacks from port 80 to 8080 if Azure blocks port 80 CONNECT)
+    - Tests candidate username suffixes (e.g. -us for Webshare US geo-targeting)
+    - Verifies egress IP and alerts if country blocks TikTok
+    Returns: (playwright_proxy_dict_or_None, status_code, message)
+    """
+    if not raw_server or not raw_server.strip():
+        return None, "empty_proxy", "No proxy server specified"
+
+    raw = raw_server.strip()
+    if not (raw.startswith("http://") or raw.startswith("https://") or raw.startswith("socks5://")):
+        raw = f"http://{raw}"
+
+    try:
+        from urllib.parse import urlparse, quote
+        parsed = urlparse(raw)
+        scheme = parsed.scheme or "http"
+        host = parsed.hostname or ""
+        port = parsed.port
+        user = parsed.username or (raw_username.strip() if raw_username else "")
+        pwd = parsed.password or (raw_password.strip() if raw_password else "")
+    except Exception as e_p:
+        return None, "invalid_proxy_url", f"Failed to parse proxy URL '{raw_server}': {e_p}"
+
+    if not host:
+        return None, "invalid_proxy_host", f"Could not extract valid hostname from '{raw_server}'"
+
+    # Determine candidate ports
+    candidate_ports = []
+    if port:
+        candidate_ports.append(port)
+    else:
+        candidate_ports.append(8080 if "webshare" in host else 80)
+
+    # For webshare.io, port 8080 is far more reliable on cloud runners than port 80
+    if "webshare" in host:
+        for alt_port in (8080, 80):
+            if alt_port not in candidate_ports:
+                candidate_ports.append(alt_port)
+
+    # Determine candidate usernames
+    candidate_users = [user] if user else [""]
+    if "webshare" in host and user and not any(tag in user for tag in ("-us", "-gb", "-de", "-fr", "-country", "_")):
+        candidate_users.append(f"{user}-us")
+
+    import requests
+
+    last_error = ""
+    for test_port in candidate_ports:
+        for test_user in candidate_users:
+            auth_str = f"{quote(test_user)}:{quote(pwd)}@" if (test_user and pwd) else ""
+            proxy_url = f"{scheme}://{auth_str}{host}:{test_port}"
+            proxies = {"http": proxy_url, "https": proxy_url}
+
+            user_disp = f"{test_user[:3]}***" if test_user else "none"
+            logger.info("Probing proxy connectivity: %s://%s:%s (user: %s)...", scheme, host, test_port, user_disp)
+            try:
+                # 1. Test public IP reachability (short 7s timeout)
+                resp = requests.get("https://api.ipify.org?format=json", proxies=proxies, timeout=7)
+                if resp.status_code == 200:
+                    ip_data = resp.json()
+                    egress_ip = ip_data.get("ip", "unknown")
+                    logger.info("Proxy pre-flight check SUCCESS via %s:%s! Public egress IP: %s", host, test_port, egress_ip)
+
+                    # 2. Check egress country to ensure TikTok is not regionally blocked
+                    egress_country = "unknown"
+                    try:
+                        c_resp = requests.get(f"http://ip-api.com/json/{egress_ip}?fields=countryCode", timeout=4)
+                        if c_resp.status_code == 200:
+                            egress_country = c_resp.json().get("countryCode", "unknown")
+                            logger.info("Proxy egress country: %s", egress_country)
+                            if egress_country.upper() in ("IN", "HK"):
+                                logger.warning(
+                                    "::warning::Proxy egress IP is located in '%s' where TikTok is blocked! "
+                                    "Consider setting a US proxy or appending '-us' to your Webshare username.",
+                                    egress_country,
+                                )
+                    except Exception:
+                        pass
+
+                    clean_server = f"{scheme}://{host}:{test_port}"
+                    pw_dict = {"server": clean_server}
+                    if test_user:
+                        pw_dict["username"] = test_user
+                    if pwd:
+                        pw_dict["password"] = pwd
+
+                    return pw_dict, "ok", f"Proxy verified ({clean_server}, egress: {egress_ip}, country: {egress_country})"
+            except requests.exceptions.ProxyError as e_proxy:
+                last_error = f"Proxy authentication / handshake failed ({e_proxy})"
+                if "407" in str(e_proxy):
+                    logger.error(
+                        "::error::TikTok Proxy returned HTTP 407 (Proxy Authentication Required). "
+                        "Verify TIKTOK_PROXY_USERNAME and TIKTOK_PROXY_PASSWORD in GitHub Secrets, "
+                        "and ensure 'Password' authentication is enabled in your Webshare dashboard."
+                    )
+            except (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout, requests.exceptions.Timeout) as e_to:
+                last_error = f"Proxy connection timed out on {host}:{test_port} ({e_to})"
+                logger.warning("Proxy probe timed out on %s:%s", host, test_port)
+            except Exception as e_other:
+                last_error = f"Proxy probe error on {host}:{test_port}: {e_other}"
+                logger.warning("Proxy probe error on %s:%s: %s", host, test_port, e_other)
+
+    logger.error("All proxy probes failed! Last error: %s", last_error)
+    return None, "proxy_failed", last_error
+
+
 def upload_via_playwright(video_path: Path, title: str) -> bool:
     """Uploads video using Playwright headless browser with session cookies or full cookie export."""
     has_session = bool(config.tiktok_session_id and config.tiktok_session_id.strip())
@@ -266,13 +380,13 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
     if not (has_session or has_cookies):
         logger.info("No TIKTOK_SESSION_ID or TIKTOK_COOKIES provided; skipping Playwright upload.")
-        return False
+        return False, "no_credentials", "No TIKTOK_SESSION_ID or TIKTOK_COOKIES provided"
 
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
         logger.warning("Playwright is not installed; skipping browser fallback.")
-        return False
+        return False, "playwright_not_installed", "Playwright is not installed"
 
     caption = build_caption(title)
     screenshot_dir = config.temp_dir / "playwright_debug"
@@ -293,29 +407,21 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
     logger.info("Starting headless Playwright upload with %d authenticated cookies...", len(cookies_to_inject))
 
-    # Configure proxy if provided (critical for bypassing cloud datacenter IP blacklists)
+    # Configure and verify proxy if provided (critical for bypassing cloud datacenter IP blacklists)
     proxy_settings = None
     if config.tiktok_proxy_server:
-        raw_server = config.tiktok_proxy_server.strip()
-        from urllib.parse import urlparse
-        # Handle cases where user pastes full proxy URL containing credentials
-        if "@" in raw_server:
-            parsed = urlparse(raw_server if "://" in raw_server else f"http://{raw_server}")
-            scheme = parsed.scheme or "http"
-            port_str = f":{parsed.port}" if parsed.port else ""
-            clean_server = f"{scheme}://{parsed.hostname}{port_str}"
-            proxy_settings = {
-                "server": clean_server,
-                "username": parsed.username or config.tiktok_proxy_username or "",
-                "password": parsed.password or config.tiktok_proxy_password or "",
-            }
-        else:
-            proxy_settings = {"server": raw_server}
-            if config.tiktok_proxy_username:
-                proxy_settings["username"] = config.tiktok_proxy_username
-            if config.tiktok_proxy_password:
-                proxy_settings["password"] = config.tiktok_proxy_password
-        logger.info("Configured Playwright to route through proxy: %s", proxy_settings.get("server"))
+        proxy_settings, p_status, p_msg = verify_and_resolve_proxy(
+            config.tiktok_proxy_server,
+            config.tiktok_proxy_username,
+            config.tiktok_proxy_password,
+        )
+        if not proxy_settings:
+            logger.error(
+                "::error::TikTok Proxy Pre-flight check failed (%s). Aborting upload to prevent session revocation from datacenter IP.",
+                p_msg,
+            )
+            return False, "proxy_failed", f"Proxy pre-flight failed: {p_msg}"
+        logger.info("Configured Playwright with verified proxy: %s", proxy_settings.get("server"))
 
     try:
         with sync_playwright() as p:
@@ -408,6 +514,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     logger.warning("Error injecting initial cookies into browser context: %s", e_cook)
 
             page = context.new_page()
+            page.on("requestfailed", lambda req: logger.debug("Playwright request notice: %s | %s", req.url, req.failure))
 
             # Navigate directly to Creator Studio upload portal (skipping consumer homepage to avoid session conflicts)
             def dismiss_overlays(scopes):
@@ -497,13 +604,25 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
             for target_url in upload_urls:
                 logger.info("Navigating to upload portal: %s...", target_url)
+                nav_ok = False
                 try:
-                    page.goto(target_url, wait_until="domcontentloaded", timeout=35000)
+                    # wait_until="commit" finishes as soon as HTTP 200 response headers arrive,
+                    # avoiding hangs caused by slow background analytics or tracking scripts.
+                    page.goto(target_url, wait_until="commit", timeout=60000)
+                    nav_ok = True
+                    try:
+                        page.wait_for_load_state("domcontentloaded", timeout=25000)
+                    except Exception:
+                        logger.info("DOM loading state took longer on %s; proceeding...", target_url)
                     page.wait_for_timeout(3000)
                 except Exception as e_nav:
                     logger.warning("Navigation notice for %s: %s", target_url, e_nav)
 
                 safe_screenshot(page, screenshot_dir / "01_page_loaded.png")
+
+                if not nav_ok or "about:blank" in page.url.lower():
+                    logger.warning("Portal %s failed to load or remained blank; trying alternative...", target_url)
+                    continue
 
                 if "login" in page.url.lower():
                     logger.warning("Portal %s bounced to login; trying alternative...", target_url)
