@@ -101,7 +101,7 @@ def test_verify_and_resolve_proxy_mocked(monkeypatch):
         if "ipify.org" in url:
             return DummyResponse({"ip": "185.199.229.10"})
         if "ip-api.com" in url:
-            return DummyResponse({"countryCode": "US"})
+            return DummyResponse({"countryCode": "US", "timezone": "America/Los_Angeles"})
         return DummyResponse({}, 200)
 
     monkeypatch.setattr(requests, "get", mock_get)
@@ -114,6 +114,7 @@ def test_verify_and_resolve_proxy_mocked(monkeypatch):
     assert "p.webshare.io" in proxy_dict["server"]
     assert proxy_dict["username"] == "bvgafxhc-0"
     assert proxy_dict["password"] == "b3j3wowo1icd"
+    assert proxy_dict["_timezone"] == "America/Los_Angeles"
     assert "US" in msg
 
 

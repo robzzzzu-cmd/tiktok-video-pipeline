@@ -15,6 +15,7 @@ praw>=7.7.1
 
 # Browser Automation (TikTok Upload Fallback)
 playwright>=1.44.0
+playwright-stealth>=1.0.6
 
 # Configuration & Utilities
 pydantic>=2.7.0

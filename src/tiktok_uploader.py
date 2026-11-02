@@ -349,13 +349,16 @@ def verify_and_resolve_proxy(
                     egress_ip = ip_data.get("ip", "unknown")
                     logger.info("Proxy pre-flight check SUCCESS via %s:%s! Public egress IP: %s", host, test_port, egress_ip)
 
-                    # 2. Check egress country to ensure TikTok is not regionally blocked
+                    # 2. Check egress country and timezone to ensure environment alignment
                     egress_country = "unknown"
+                    egress_timezone = "America/Los_Angeles"
                     try:
-                        c_resp = requests.get(f"http://ip-api.com/json/{egress_ip}?fields=countryCode", timeout=4)
+                        c_resp = requests.get(f"http://ip-api.com/json/{egress_ip}?fields=countryCode,timezone", timeout=4)
                         if c_resp.status_code == 200:
-                            egress_country = c_resp.json().get("countryCode", "unknown")
-                            logger.info("Proxy egress country: %s", egress_country)
+                            c_data = c_resp.json()
+                            egress_country = c_data.get("countryCode", "unknown")
+                            egress_timezone = c_data.get("timezone", "America/Los_Angeles")
+                            logger.info("Proxy egress country: %s | timezone: %s", egress_country, egress_timezone)
                             if egress_country.upper() in ("IN", "HK"):
                                 logger.warning(
                                     "::warning::Proxy egress IP is located in '%s' where TikTok is blocked! "
@@ -371,8 +374,9 @@ def verify_and_resolve_proxy(
                         pw_dict["username"] = test_user
                     if pwd:
                         pw_dict["password"] = pwd
+                    pw_dict["_timezone"] = egress_timezone
 
-                    return pw_dict, "ok", f"Proxy verified ({clean_server}, egress: {egress_ip}, country: {egress_country})"
+                    return pw_dict, "ok", f"Proxy verified ({clean_server}, egress: {egress_ip}, country: {egress_country}, tz: {egress_timezone})"
             except requests.exceptions.ProxyError as e_proxy:
                 last_error = f"Proxy authentication / handshake failed ({e_proxy})"
                 if "407" in str(e_proxy):
@@ -444,9 +448,10 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
     try:
         with sync_playwright() as p:
+            pw_proxy = {k: v for k, v in proxy_settings.items() if not k.startswith("_")} if proxy_settings else None
             browser = p.chromium.launch(
                 headless=True,
-                proxy=proxy_settings,
+                proxy=pw_proxy,
                 args=[
                     "--headless=new",
                     "--no-sandbox",
@@ -457,25 +462,32 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     "--window-size=1920,1080",
                 ],
             )
-            # Match native Linux environment to prevent TLS/OS/UA mismatch detection
+            detected_tz = (proxy_settings.get("_timezone") if proxy_settings else None) or "America/Los_Angeles"
+            # Emulate real Windows 10/11 64-bit Google Chrome (matching desktop session cookies)
             context = browser.new_context(
                 viewport={"width": 1920, "height": 1080},
                 user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) "
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/128.0.0.0 Safari/537.36"
+                    "Chrome/131.0.0.0 Safari/537.36"
                 ),
                 locale="en-US",
-                timezone_id="America/New_York",
+                timezone_id=detected_tz,
                 extra_http_headers={
                     "Accept-Language": "en-US,en;q=0.9",
-                    "Sec-Ch-Ua": '"Chromium";v="128", "Google Chrome";v="128", "Not-A.Brand";v="99"',
+                    "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
                     "Sec-Ch-Ua-Mobile": "?0",
-                    "Sec-Ch-Ua-Platform": '"Linux"',
+                    "Sec-Ch-Ua-Platform": '"Windows"',
                 },
             )
             # Comprehensive anti-detection & browser stealth injection
             context.add_init_script("""
+                // Mask platform to Win32
+                Object.defineProperty(Navigator.prototype, 'platform', {
+                    get: () => 'Win32',
+                    configurable: true
+                });
+
                 // Mask webdriver prototype
                 Object.defineProperty(Navigator.prototype, 'webdriver', {
                     get: () => undefined,
@@ -484,7 +496,13 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
                 // Mock window.chrome
                 window.chrome = {
-                    runtime: {},
+                    runtime: {
+                        OnInstalledReason: { INSTALL: 'install', UPDATE: 'update', CHROME_UPDATE: 'chrome_update', SHARED_MODULE_UPDATE: 'shared_module_update' },
+                        OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+                        PlatformOs: { MAC: 'mac', WIN: 'win', ANDROID: 'android', CROS: 'cros', LINUX: 'linux', OPENBSD: 'openbsd' },
+                        PlatformArch: { ARM: 'arm', ARM64: 'arm64', X86_32: 'x86-32', X86_64: 'x86-64', MIPS: 'mips', MIPS64: 'mips64' },
+                        PlatformNaclArch: { ARM: 'arm', X86_32: 'x86-32', X86_64: 'x86-64', MIPS: 'mips', MIPS64: 'mips64' }
+                    },
                     loadTimes: function() {},
                     csi: function() {},
                     app: {}
@@ -493,9 +511,11 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 // Mock navigator.plugins
                 Object.defineProperty(Navigator.prototype, 'plugins', {
                     get: () => [
-                        { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
-                        { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
-                        { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' }
+                        { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                        { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                        { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                        { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+                        { name: 'WebKit built-in PDF', filename: 'internal-pdf-viewer', description: 'Portable Document Format' }
                     ]
                 });
 
@@ -507,8 +527,8 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 // Mask WebGL vendor/renderer away from SwiftShader/llvmpipe
                 const getParameter = WebGLRenderingContext.prototype.getParameter;
                 WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                    if (parameter === 37445) return 'Intel Inc.';
-                    if (parameter === 37446) return 'Intel(R) Iris(R) Xe Graphics';
+                    if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+                    if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
                     return getParameter.apply(this, arguments);
                 };
 
@@ -517,7 +537,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     const rawCookies = document.cookie.split('; ');
                     for (const c of rawCookies) {
                         const [k, v] = c.split('=');
-                        if (k && v && (k.includes('webid') || k.includes('user_id') || k.includes('csrf'))) {
+                        if (k && v && (k.includes('webid') || k.includes('user_id') || k.includes('csrf') || k.includes('tt_'))) {
                             localStorage.setItem(k, v);
                         }
                     }
@@ -533,6 +553,15 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     logger.warning("Error injecting initial cookies into browser context: %s", e_cook)
 
             page = context.new_page()
+
+            # Apply Playwright Stealth evasions
+            try:
+                from playwright_stealth import stealth_sync
+                stealth_sync(page)
+                logger.info("Applied Playwright Stealth evasions successfully.")
+            except Exception as e_stealth:
+                logger.debug("Stealth injection notice: %s", e_stealth)
+
             page.on("console", lambda msg: logger.info("Browser console [%s]: %s", msg.type, msg.text[:200]) if msg.type in ("warning", "error") else None)
             page.on("response", lambda resp: logger.warning("HTTP %s on %s", resp.status, resp.url[:120]) if resp.status >= 400 and any(k in resp.url for k in ["upload", "tos", "byteoversea", "video", "post", "project", "web"]) else None)
             page.on("requestfailed", lambda req: logger.warning("Playwright request failed: %s | %s", req.url[:120], req.failure))
@@ -646,6 +675,16 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 "https://www.tiktok.com/upload?lang=en",
                 "https://www.tiktok.com/tiktokstudio/upload",
             ]
+            # Warm up the browser session on the main explore page so cookies settle,
+            # edge CDN validates the session, and localStorage is naturally hydrated.
+            logger.info("Warming up browser session on tiktok.com explore...")
+            try:
+                page.goto("https://www.tiktok.com/explore", wait_until="commit", timeout=30000)
+                page.wait_for_timeout(3000)
+                safe_screenshot(page, screenshot_dir / "00_session_warmed.png")
+            except Exception as e_warm:
+                logger.debug("Session warm-up notice: %s", e_warm)
+
             file_attached = False
             upload_frame = None
 
