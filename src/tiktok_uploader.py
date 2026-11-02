@@ -310,17 +310,18 @@ def verify_and_resolve_proxy(
     candidate_users = []
     if "webshare" in host and user:
         clean_user = user
-        for suffix in ("-us-rotate", "-rotate-us", "-rotate", "-us"):
+        for suffix in ("-us-rotate", "-rotate-us", "-rotate", "-us", "-0", "-1"):
             if clean_user.endswith(suffix):
                 clean_user = clean_user[:-len(suffix)]
                 break
-        # Webshare's rotating backbone p.webshare.io REQUIRES -rotate appended to user credentials!
-        # Without -rotate, Webshare returns HTTP 407 'The proxy you are connecting is not in your list.'
-        # Priority 1: US-targeted rotating IP (guarantees US exit and unblocks TikTok)
+        # Webshare free/standard tier:
+        # Priority 1: Persistent static proxy '-0' (keeps the EXACT same IP across all chunks and websockets, preventing ByteDance TOS upload failures)
+        candidate_users.append(f"{clean_user}-0")
+        # Priority 2: US-targeted rotating IP
         candidate_users.append(f"{clean_user}-us-rotate")
-        # Priority 2: General rotating IP
+        # Priority 3: General rotating IP
         candidate_users.append(f"{clean_user}-rotate")
-        # Priority 3: Raw user as provided
+        # Priority 4: Raw user as provided
         if user not in candidate_users:
             candidate_users.append(user)
     elif user:
@@ -550,8 +551,6 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                         'button:has-text("Accept all")',
                         'button:has-text("Allow all")',
                         'button[aria-label="Close"]',
-                        'div[role="dialog"] button',
-                        'div[class*="guide"] button',
                     ]:
                         try:
                             btn = s.query_selector(sel)

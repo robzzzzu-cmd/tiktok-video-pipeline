@@ -112,7 +112,7 @@ def test_verify_and_resolve_proxy_mocked(monkeypatch):
     assert proxy_dict is not None
     assert reason == "ok"
     assert "p.webshare.io" in proxy_dict["server"]
-    assert proxy_dict["username"] == "bvgafxhc-us-rotate"
+    assert proxy_dict["username"] == "bvgafxhc-0"
     assert proxy_dict["password"] == "b3j3wowo1icd"
     assert "US" in msg
 
