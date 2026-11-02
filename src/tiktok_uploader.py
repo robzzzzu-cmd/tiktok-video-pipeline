@@ -533,7 +533,9 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                     logger.warning("Error injecting initial cookies into browser context: %s", e_cook)
 
             page = context.new_page()
-            page.on("requestfailed", lambda req: logger.debug("Playwright request notice: %s | %s", req.url, req.failure))
+            page.on("console", lambda msg: logger.info("Browser console [%s]: %s", msg.type, msg.text[:200]) if msg.type in ("warning", "error") else None)
+            page.on("response", lambda resp: logger.warning("HTTP %s on %s", resp.status, resp.url[:120]) if resp.status >= 400 and any(k in resp.url for k in ["upload", "tos", "byteoversea", "video", "post", "project", "web"]) else None)
+            page.on("requestfailed", lambda req: logger.warning("Playwright request failed: %s | %s", req.url[:120], req.failure))
 
             # Navigate directly to Creator Studio upload portal (skipping consumer homepage to avoid session conflicts)
             def dismiss_overlays(scopes):
@@ -561,6 +563,27 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                         except Exception:
                             pass
 
+            def handle_error_or_retry(scopes):
+                for s in scopes:
+                    try:
+                        # 1. Dialog with "Retry"
+                        retry_modal_btn = s.query_selector('div[role="dialog"] button:has-text("Retry")')
+                        if retry_modal_btn and retry_modal_btn.is_visible():
+                            logger.warning("Detected 'Retry' button in upload error dialog; clicking...")
+                            retry_modal_btn.click(timeout=3000, force=True)
+                            page.wait_for_timeout(2000)
+                            return True
+                        # 2. Upload card with "Retry"
+                        retry_card_btn = s.query_selector('div[class*="upload"] button:has-text("Retry"), button:has-text("Retry")')
+                        if retry_card_btn and retry_card_btn.is_visible():
+                            logger.warning("Detected 'Retry' button on upload card; clicking...")
+                            retry_card_btn.click(timeout=3000, force=True)
+                            page.wait_for_timeout(2000)
+                            return True
+                    except Exception:
+                        pass
+                return False
+
             def try_attach_file(scopes, file_path: Path):
                 # A: Direct file input
                 for s in scopes:
@@ -575,6 +598,13 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                             if el:
                                 logger.info("Found file input via selector '%s' in frame '%s'", sel, s.name or "main")
                                 el.set_input_files(str(file_path))
+                                try:
+                                    el.evaluate("""(input) => {
+                                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                                    }""")
+                                except Exception:
+                                    pass
                                 return True, s
                         except Exception as e_inp:
                             logger.debug("Input selector '%s' error: %s", sel, e_inp)
@@ -722,38 +752,51 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             if len(clean_title) > 100:
                 clean_title = clean_title[:97] + "..."
             tags_str = " ".join(config.hashtags)
+            full_caption = f"{clean_title}\n\n{tags_str}"
+
+            # Clear any error popups or overlays before editing caption
+            handle_error_or_retry(search_scopes)
+            dismiss_overlays(search_scopes)
 
             if caption_el:
                 logger.info("Entering caption and viral hashtags into description editor...")
                 try:
+                    caption_el.scroll_into_view_if_needed()
                     caption_el.click(timeout=4000, force=True)
                     page.wait_for_timeout(300)
                     page.keyboard.press("Control+A")
                     page.keyboard.press("Backspace")
                     page.wait_for_timeout(200)
-                    page.keyboard.type(clean_title, delay=10)
+                    page.keyboard.type(clean_title, delay=12)
                     page.keyboard.press("Enter")
                     page.keyboard.press("Enter")
                     page.wait_for_timeout(100)
-                    page.keyboard.type(tags_str, delay=10)
+                    page.keyboard.type(tags_str, delay=12)
                     page.wait_for_timeout(300)
                     page.keyboard.press("Escape")
-                    page.wait_for_timeout(500)
+                    page.wait_for_timeout(400)
                 except Exception as e_fill:
                     logger.warning("Keyboard typing notice (%s); attempting evaluate text dispatch...", e_fill)
+
+                # Check if description box actually has our title; fallback to direct DOM execCommand
+                current_text = caption_el.inner_text() or ""
+                if clean_title[:15] not in current_text:
+                    logger.info("Description editor text was '%s'; forcing full caption via DOM execCommand...", current_text[:40])
                     try:
                         active_scope = upload_frame or page
-                        full_caption = f"{clean_title}\n\n{tags_str}"
                         active_scope.evaluate(
-                            """(text) => {
+                            """({ text }) => {
                                 const el = document.querySelector('div[contenteditable="true"], textarea');
                                 if (el) {
                                     el.focus();
                                     document.execCommand('selectAll', false, null);
+                                    document.execCommand('delete', false, null);
                                     document.execCommand('insertText', false, text);
+                                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                                    el.dispatchEvent(new Event('change', { bubbles: true }));
                                 }
                             }""",
-                            full_caption,
+                            {"text": full_caption},
                         )
                     except Exception as e_ev:
                         logger.warning("Could not set caption via evaluate: %s", e_ev)
@@ -895,6 +938,9 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             logger.info("Waiting for video upload to finalize and authentic Post button to become enabled...")
             post_button = None
             for attempt in range(80):
+                # Check and auto-retry if transient "Couldn't upload" or network error dialog appears
+                handle_error_or_retry(search_scopes)
+
                 post_button = find_real_post_button(search_scopes)
                 if post_button:
                     break
