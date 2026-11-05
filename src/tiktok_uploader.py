@@ -18,7 +18,13 @@ logger = logging.getLogger(__name__)
 
 def build_caption(title: str, hashtags: Optional[list] = None) -> str:
     """Builds a TikTok caption combining the story title as description and viral hashtags."""
-    tags = hashtags or config.hashtags
+    tags = list(hashtags or config.hashtags)
+    # Auto-tag part tags for viral search discovery & profile cross-traffic
+    if "[part 1]" in title.lower() and "#part1" not in [t.lower() for t in tags]:
+        tags.insert(0, "#part1")
+    elif "[part 2]" in title.lower() and "#part2" not in [t.lower() for t in tags]:
+        tags.insert(0, "#part2")
+
     tags_str = " ".join(tags)
     clean_title = title.strip()
     if len(clean_title) > 100:

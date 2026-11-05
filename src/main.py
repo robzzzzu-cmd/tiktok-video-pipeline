@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from src.config import config
-from src.story_generator import get_story
+from src.story_generator import get_story, split_story_into_two_parts
 from src.tts_engine import generate_voiceover
 from src.subtitles import generate_ass_subtitles
 from src.video_composer import (
@@ -38,7 +38,7 @@ def run_pipeline(
     category: str = "auto",
     bg_style: str = "auto",
     privacy: str = "public",
-    length: str = "short",
+    length: str = "multipart",
     include_bg_music: bool = False,
     fail_on_upload_error: bool = False,
     dry_run: bool = False,
@@ -50,7 +50,11 @@ def run_pipeline(
         config.tiktok_privacy_level = "SELF_ONLY" if privacy.lower() in ("self_only", "self", "private", "draft") else "PUBLIC_TO_EVERYONE"
     if length:
         config.video_length = length
-        if length == "short":
+        if length in ("multipart", "multi_part", "two_part", "twopart"):
+            config.video_length = "multipart"
+            config.target_words_min = 600
+            config.target_words_max = 800
+        elif length == "short":
             config.target_words_min = 180
             config.target_words_max = 240
         elif length == "full":
@@ -66,7 +70,6 @@ def run_pipeline(
     temp_run_dir.mkdir(parents=True, exist_ok=True)
     config.output_dir.mkdir(parents=True, exist_ok=True)
 
-    final_video_path = config.output_dir / f"tiktok_video_{timestamp_str}.mp4"
     summary_path = config.output_dir / "latest_run_summary.json"
 
     logger.info("=========================================================")
@@ -77,7 +80,7 @@ def run_pipeline(
         source,
         category,
         bg_style,
-        length,
+        config.video_length,
         config.tiktok_privacy_level,
     )
     logger.info("=========================================================")
@@ -99,46 +102,9 @@ def run_pipeline(
             story.source,
         )
 
-        narration_text = story.full_narration_text()
-
-        # Step 2: Text-to-Speech Engine
-        logger.info("[Step 2/5] Synthesizing voiceover and word boundary timings...")
-        tts_result = generate_voiceover(
-            text=narration_text,
-            gender=story.narrator_gender,
-            output_dir=temp_run_dir,
-            filename_prefix=f"voiceover_{timestamp_str}",
-        )
-        logger.info(
-            "Voiceover generated: %.2f seconds using voice '%s' (%d words tracked)",
-            tts_result.duration_seconds,
-            tts_result.voice_used,
-            len(tts_result.word_timings),
-        )
-
-        # Step 3: Dynamic ASS Subtitle Creation with Category Accents & Top Hook
-        logger.info("[Step 3/5] Generating TikTok animated word-highlight subtitles...")
-        ass_path = temp_run_dir / f"captions_{timestamp_str}.ass"
         matched_cat = story.tags[-1] if (story.tags and story.tags[-1] in config.category_colors) else category
         highlight_color = config.category_colors.get(matched_cat, config.highlight_color_ass)
         category_label = story.subreddit if story.subreddit else matched_cat.upper()
-        generate_ass_subtitles(
-            word_timings=tts_result.word_timings,
-            output_ass_path=ass_path,
-            highlight_color=highlight_color,
-            story_title=story.title,
-            category_tag=category_label,
-        )
-        logger.info("Subtitles written to %s (highlight color: %s)", ass_path, highlight_color)
-
-        # Step 4: Background Video & Optional Background Music
-        logger.info("[Step 4/5] Extracting random '%s' background segment...", bg_style)
-        raw_bg_path = temp_run_dir / f"background_{timestamp_str}.mp4"
-        download_background_clip(
-            target_duration=tts_result.duration_seconds,
-            output_path=raw_bg_path,
-            bg_style=bg_style,
-        )
 
         bg_music_path = None
         if config.include_background_music:
@@ -151,78 +117,237 @@ def run_pipeline(
         else:
             logger.info("Background music mixing is disabled (clean voiceover ready for native TikTok trending sound).")
 
-        # Step 5: Video Compositing (ffmpeg)
-        logger.info("[Step 5/5] Compositing final vertical 1080x1920 video with ffmpeg...")
-        render_final_video(
-            background_video=raw_bg_path,
-            voiceover_audio=tts_result.audio_path,
-            subtitles_ass=ass_path,
-            output_video=final_video_path,
-            duration=tts_result.duration_seconds,
-            background_music=bg_music_path,
-        )
-        logger.info("Final video successfully rendered: %s", final_video_path)
-
-        # Step 6: TikTok Auto-Publishing
-        upload_result = {"status": "skipped"}
-        if not skip_upload:
-            logger.info("Publishing generated video to TikTok...")
-            upload_result = publish_to_tiktok(
-                video_path=final_video_path,
+        if config.video_length == "multipart":
+            logger.info("Multi-part mode enabled: splitting story into Part 1 and Part 2 (>=2 mins each)...")
+            part1_narration, part2_narration = split_story_into_two_parts(
                 title=story.title,
-                dry_run=dry_run,
+                body=story.body,
+                min_part1_words=config.min_part_words,
             )
-            logger.info("Publish result: %s", upload_result)
 
-            has_creds = bool(config.tiktok_access_token or config.tiktok_session_id or config.tiktok_cookies)
-            if not dry_run and has_creds and upload_result.get("status") not in ("success", "simulated"):
-                fail_reason = upload_result.get("reason", "unknown")
-                fail_msg = upload_result.get("message", "Upload failed")
-                # High-visibility GitHub Actions error annotation in UI
-                print(f"::error title=TikTok Upload Failed::[{fail_reason}] {fail_msg}")
-                logger.error("=========================================================")
-                logger.error("CRITICAL: Video rendering succeeded, but TikTok upload FAILED!")
-                logger.error("Failure Reason: %s", fail_reason)
-                logger.error("Message: %s", fail_msg)
-                logger.error("Download workflow artifact 'temp/playwright_debug/*.png' for screenshots.")
-                logger.error("=========================================================")
-                if config.fail_on_upload_error:
-                    raise RuntimeError(f"TikTok upload failed ({fail_reason}): {fail_msg}")
+            parts_spec = [
+                (1, f"{story.title} [Part 1]", f"{category_label} • PART 1", part1_narration),
+                (2, f"{story.title} [Part 2]", f"{category_label} • PART 2", part2_narration),
+            ]
+
+            rendered_parts = []
+            for p_num, p_title, p_badge, p_narration in parts_spec:
+                logger.info("=========================================================")
+                logger.info("Processing Video Part %d/2: '%s'", p_num, p_title)
+                logger.info("=========================================================")
+                logger.info("[Part %d - Step 2/5] Synthesizing voiceover...", p_num)
+                tts_result = generate_voiceover(
+                    text=p_narration,
+                    gender=story.narrator_gender,
+                    output_dir=temp_run_dir,
+                    filename_prefix=f"voiceover_{timestamp_str}_part{p_num}",
+                )
+                logger.info(
+                    "Part %d Voiceover generated: %.2f seconds using voice '%s' (%d words tracked)",
+                    p_num,
+                    tts_result.duration_seconds,
+                    tts_result.voice_used,
+                    len(tts_result.word_timings),
+                )
+
+                logger.info("[Part %d - Step 3/5] Generating TikTok subtitles...", p_num)
+                ass_path = temp_run_dir / f"captions_{timestamp_str}_part{p_num}.ass"
+                generate_ass_subtitles(
+                    word_timings=tts_result.word_timings,
+                    output_ass_path=ass_path,
+                    highlight_color=highlight_color,
+                    story_title=p_title,
+                    category_tag=p_badge,
+                )
+                logger.info("Part %d subtitles written to %s", p_num, ass_path)
+
+                logger.info("[Part %d - Step 4/5] Extracting '%s' background segment...", p_num, bg_style)
+                raw_bg_path = temp_run_dir / f"background_{timestamp_str}_part{p_num}.mp4"
+                download_background_clip(
+                    target_duration=tts_result.duration_seconds,
+                    output_path=raw_bg_path,
+                    bg_style=bg_style,
+                )
+
+                logger.info("[Part %d - Step 5/5] Compositing vertical 1080x1920 video with ffmpeg...", p_num)
+                part_video_path = config.output_dir / f"tiktok_video_{timestamp_str}_part{p_num}.mp4"
+                render_final_video(
+                    background_video=raw_bg_path,
+                    voiceover_audio=tts_result.audio_path,
+                    subtitles_ass=ass_path,
+                    output_video=part_video_path,
+                    duration=tts_result.duration_seconds,
+                    background_music=bg_music_path,
+                )
+                logger.info("Part %d video rendered successfully: %s", p_num, part_video_path)
+
+                rendered_parts.append({
+                    "part_num": p_num,
+                    "title": p_title,
+                    "video_path": part_video_path,
+                    "duration": round(tts_result.duration_seconds, 2),
+                    "tts_result": tts_result,
+                })
+
+            # Step 6: Multi-Part Publishing
+            published_parts_summary = []
+            for idx, p_info in enumerate(rendered_parts):
+                p_num = p_info["part_num"]
+                p_video = p_info["video_path"]
+                p_title = p_info["title"]
+                upload_res = {"status": "skipped"}
+                if not skip_upload:
+                    if idx > 0:
+                        logger.info("Waiting 15 seconds before uploading Part %d to prevent TikTok concurrency rate limits...", p_num)
+                        time.sleep(15)
+                    logger.info("Publishing Part %d to TikTok: '%s'...", p_num, p_title)
+                    upload_res = publish_to_tiktok(
+                        video_path=p_video,
+                        title=p_title,
+                        dry_run=dry_run,
+                    )
+                    logger.info("Part %d publish result: %s", p_num, upload_res)
+                    has_creds = bool(config.tiktok_access_token or config.tiktok_session_id or config.tiktok_cookies)
+                    if not dry_run and has_creds and upload_res.get("status") not in ("success", "simulated"):
+                        fail_reason = upload_res.get("reason", "unknown")
+                        fail_msg = upload_res.get("message", "Upload failed")
+                        print(f"::error title=TikTok Upload Part {p_num} Failed::[{fail_reason}] {fail_msg}")
+                        if config.fail_on_upload_error:
+                            raise RuntimeError(f"TikTok upload failed for Part {p_num} ({fail_reason}): {fail_msg}")
+
+                published_parts_summary.append({
+                    "part": p_num,
+                    "title": p_title,
+                    "video_path": str(p_video),
+                    "video_size_bytes": p_video.stat().st_size if p_video.exists() else 0,
+                    "duration_seconds": p_info["duration"],
+                    "upload": upload_res,
+                })
+
+            overall_status = "completed"
+            if not skip_upload and any(p["upload"].get("status") not in ("success", "simulated", "skipped") for p in published_parts_summary):
+                overall_status = "upload_failed"
+
+            summary = {
+                "timestamp": timestamp_str,
+                "status": overall_status,
+                "category": matched_cat,
+                "bg_style": bg_style,
+                "length_mode": "multipart",
+                "story": {
+                    "title": story.title,
+                    "gender": story.narrator_gender,
+                    "total_words": story.word_count,
+                    "source": story.source,
+                    "subreddit": story.subreddit,
+                },
+                "parts": published_parts_summary,
+            }
+            with open(summary_path, "w", encoding="utf-8") as f_sum:
+                json.dump(summary, f_sum, indent=2)
+
+            logger.info("Multi-part run summary saved to %s", summary_path)
+            logger.info("=========================================================")
+            logger.info("Both Part 1 and Part 2 generated and published successfully!")
+            logger.info("=========================================================")
+            return rendered_parts[0]["video_path"]
+
         else:
-            logger.info("Upload skipped via --skip-upload flag.")
+            # Single-video pipeline mode (short or full)
+            final_video_path = config.output_dir / f"tiktok_video_{timestamp_str}.mp4"
+            narration_text = story.full_narration_text()
 
-        run_status = "completed" if upload_result.get("status") in ("success", "simulated", "skipped") else "upload_failed"
+            logger.info("[Step 2/5] Synthesizing voiceover and word boundary timings...")
+            tts_result = generate_voiceover(
+                text=narration_text,
+                gender=story.narrator_gender,
+                output_dir=temp_run_dir,
+                filename_prefix=f"voiceover_{timestamp_str}",
+            )
+            logger.info(
+                "Voiceover generated: %.2f seconds using voice '%s' (%d words tracked)",
+                tts_result.duration_seconds,
+                tts_result.voice_used,
+                len(tts_result.word_timings),
+            )
 
-        # Save run summary
-        summary = {
-            "timestamp": timestamp_str,
-            "status": run_status,
-            "category": matched_cat,
-            "bg_style": bg_style,
-            "story": {
-                "title": story.title,
-                "gender": story.narrator_gender,
-                "word_count": story.word_count,
-                "source": story.source,
-                "subreddit": story.subreddit,
-            },
-            "audio": {
-                "voice": tts_result.voice_used,
-                "duration_seconds": round(tts_result.duration_seconds, 2),
-                "words_aligned": len(tts_result.word_timings),
-            },
-            "video_path": str(final_video_path),
-            "video_size_bytes": final_video_path.stat().st_size,
-            "upload": upload_result,
-        }
-        with open(summary_path, "w", encoding="utf-8") as f_sum:
-            json.dump(summary, f_sum, indent=2)
+            logger.info("[Step 3/5] Generating TikTok animated word-highlight subtitles...")
+            ass_path = temp_run_dir / f"captions_{timestamp_str}.ass"
+            generate_ass_subtitles(
+                word_timings=tts_result.word_timings,
+                output_ass_path=ass_path,
+                highlight_color=highlight_color,
+                story_title=story.title,
+                category_tag=category_label,
+            )
+            logger.info("Subtitles written to %s (highlight color: %s)", ass_path, highlight_color)
 
-        logger.info("Run summary saved to %s", summary_path)
-        logger.info("=========================================================")
-        logger.info("Pipeline completed successfully!")
-        logger.info("=========================================================")
-        return final_video_path
+            logger.info("[Step 4/5] Extracting random '%s' background segment...", bg_style)
+            raw_bg_path = temp_run_dir / f"background_{timestamp_str}.mp4"
+            download_background_clip(
+                target_duration=tts_result.duration_seconds,
+                output_path=raw_bg_path,
+                bg_style=bg_style,
+            )
+
+            logger.info("[Step 5/5] Compositing final vertical 1080x1920 video with ffmpeg...")
+            render_final_video(
+                background_video=raw_bg_path,
+                voiceover_audio=tts_result.audio_path,
+                subtitles_ass=ass_path,
+                output_video=final_video_path,
+                duration=tts_result.duration_seconds,
+                background_music=bg_music_path,
+            )
+            logger.info("Final video successfully rendered: %s", final_video_path)
+
+            upload_result = {"status": "skipped"}
+            if not skip_upload:
+                logger.info("Publishing generated video to TikTok...")
+                upload_result = publish_to_tiktok(
+                    video_path=final_video_path,
+                    title=story.title,
+                    dry_run=dry_run,
+                )
+                logger.info("Publish result: %s", upload_result)
+                has_creds = bool(config.tiktok_access_token or config.tiktok_session_id or config.tiktok_cookies)
+                if not dry_run and has_creds and upload_result.get("status") not in ("success", "simulated"):
+                    fail_reason = upload_result.get("reason", "unknown")
+                    fail_msg = upload_result.get("message", "Upload failed")
+                    print(f"::error title=TikTok Upload Failed::[{fail_reason}] {fail_msg}")
+                    if config.fail_on_upload_error:
+                        raise RuntimeError(f"TikTok upload failed ({fail_reason}): {fail_msg}")
+
+            run_status = "completed" if upload_result.get("status") in ("success", "simulated", "skipped") else "upload_failed"
+            summary = {
+                "timestamp": timestamp_str,
+                "status": run_status,
+                "category": matched_cat,
+                "bg_style": bg_style,
+                "story": {
+                    "title": story.title,
+                    "gender": story.narrator_gender,
+                    "word_count": story.word_count,
+                    "source": story.source,
+                    "subreddit": story.subreddit,
+                },
+                "audio": {
+                    "voice": tts_result.voice_used,
+                    "duration_seconds": round(tts_result.duration_seconds, 2),
+                    "words_aligned": len(tts_result.word_timings),
+                },
+                "video_path": str(final_video_path),
+                "video_size_bytes": final_video_path.stat().st_size if final_video_path.exists() else 0,
+                "upload": upload_result,
+            }
+            with open(summary_path, "w", encoding="utf-8") as f_sum:
+                json.dump(summary, f_sum, indent=2)
+
+            logger.info("Run summary saved to %s", summary_path)
+            logger.info("=========================================================")
+            logger.info("Pipeline completed successfully!")
+            logger.info("=========================================================")
+            return final_video_path
 
     finally:
         # Cleanup temp directory if not explicitly preserved
@@ -278,9 +403,9 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--length",
-        choices=["short", "full"],
-        default="short",
-        help="Story length mode: 'short' (~60-80s high retention) or 'full' (~3.5m).",
+        choices=["multipart", "short", "full"],
+        default="multipart",
+        help="Story length mode: 'multipart' (Part 1 & Part 2 >=2m each with cliffhanger CTA and auto-publishing both parts), 'short' (~60-80s), or 'full' (~3.5m).",
     )
     parser.add_argument(
         "--include-bg-music",

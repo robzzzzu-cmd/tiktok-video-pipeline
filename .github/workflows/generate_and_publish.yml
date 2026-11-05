@@ -63,11 +63,12 @@ on:
           - public
           - self_only
       length:
-        description: 'Target story length (short: 60-80s high retention, or full: 3.5m)'
+        description: 'Target story length (multipart: Part 1 & Part 2 >=2m each with cliffhanger CTA, short: 60-80s, full: 3.5m)'
         required: true
-        default: 'short'
+        default: 'multipart'
         type: choice
         options:
+          - multipart
           - short
           - full
       include_bg_music:
@@ -150,7 +151,7 @@ jobs:
           CATEGORY="${{ inputs.category || 'auto' }}"
           BG_STYLE="${{ inputs.bg_style || 'auto' }}"
           PRIVACY="${{ inputs.privacy || 'public' }}"
-          LENGTH="${{ inputs.length || 'short' }}"
+          LENGTH="${{ inputs.length || 'multipart' }}"
           FLAGS="--source $SOURCE --gender $GENDER --category $CATEGORY --bg-style $BG_STYLE --privacy $PRIVACY --length $LENGTH --fail-on-upload-error"
 
           if [ "${{ inputs.include_bg_music }}" = "true" ]; then

@@ -136,7 +136,10 @@ class PipelineConfig(BaseModel):
 
     # Story & Voice Settings
     video_length: str = Field(
-        default_factory=lambda: os.getenv("VIDEO_LENGTH", "short")  # 'short' (~60-80s) or 'full' (~3.5m)
+        default_factory=lambda: os.getenv("VIDEO_LENGTH", "multipart")  # 'multipart' (Part 1 & Part 2 >=2m each), 'short' (~60-80s), or 'full' (~3.5m)
+    )
+    min_part_words: int = Field(
+        default_factory=lambda: int(os.getenv("MIN_PART_WORDS", "300"))  # Part 1 target word floor (>=120s @ 150-160 WPM)
     )
     story_source: str = Field(
         default_factory=lambda: os.getenv("STORY_SOURCE", "auto")  # 'auto', 'reddit', 'gemini'
@@ -181,10 +184,22 @@ class PipelineConfig(BaseModel):
         }
     )
     target_words_min: int = Field(
-        default_factory=lambda: int(os.getenv("TARGET_WORDS_MIN", "180" if os.getenv("VIDEO_LENGTH", "short") == "short" else "450"))
+        default_factory=lambda: int(
+            os.getenv(
+                "TARGET_WORDS_MIN",
+                "600" if os.getenv("VIDEO_LENGTH", "multipart") in ("multipart", "multi_part", "two_part", "twopart")
+                else ("180" if os.getenv("VIDEO_LENGTH") == "short" else "450")
+            )
+        )
     )
     target_words_max: int = Field(
-        default_factory=lambda: int(os.getenv("TARGET_WORDS_MAX", "240" if os.getenv("VIDEO_LENGTH", "short") == "short" else "520"))
+        default_factory=lambda: int(
+            os.getenv(
+                "TARGET_WORDS_MAX",
+                "800" if os.getenv("VIDEO_LENGTH", "multipart") in ("multipart", "multi_part", "two_part", "twopart")
+                else ("240" if os.getenv("VIDEO_LENGTH") == "short" else "520")
+            )
+        )
     )
 
     # Voice Profiles

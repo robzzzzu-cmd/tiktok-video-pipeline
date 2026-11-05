@@ -13,6 +13,19 @@ def test_build_caption():
     assert "\n\n" in caption
 
 
+def test_build_caption_multipart_tags():
+    title_p1 = "My dramatic reddit story title [Part 1]"
+    tags = ["#fyp", "#storytime", "#viral"]
+    caption_p1 = build_caption(title_p1, hashtags=tags)
+    assert "#part1" in caption_p1
+    assert caption_p1.startswith("My dramatic reddit story title [Part 1]")
+
+    title_p2 = "My dramatic reddit story title [Part 2]"
+    caption_p2 = build_caption(title_p2, hashtags=tags)
+    assert "#part2" in caption_p2
+    assert "#part1" not in caption_p2
+
+
 def test_build_caption_truncates_long_titles():
     long_title = "A" * 120
     caption = build_caption(long_title, hashtags=["#fyp"])

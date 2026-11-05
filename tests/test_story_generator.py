@@ -104,6 +104,41 @@ def test_fetch_from_huggingface_reddit():
         assert story.narrator_gender in ("male", "female")
 
 
+def test_split_story_into_two_parts():
+    from src.story_generator import split_story_into_two_parts
+
+    # Construct a 700-word narrative across multiple sentences with suspense turning point
+    sentences = []
+    # 25 sentences with ~15 words each = 375 words in first half
+    for i in range(25):
+        if i == 20:
+            sentences.append(f"Sentence {i} then out of nowhere the police arrived at my door.")
+        else:
+            sentences.append(f"Sentence {i} contains some descriptive story text about what was happening that day.")
+    # Another 25 sentences = 375 words in second half
+    for i in range(25, 50):
+        sentences.append(f"Sentence {i} describes the aftermath and confrontation that followed.")
+
+    body = " ".join(sentences)
+    title = "My Roommate Did the Unthinkable"
+
+    p1, p2 = split_story_into_two_parts(title=title, body=body, min_part1_words=300)
+
+    # Part 1 assertions
+    p1_words = len(p1.split())
+    assert p1_words >= 300, f"Part 1 word count ({p1_words}) must be >= 300"
+    assert p1.startswith("My Roommate Did the Unthinkable")
+    assert p1.endswith("Check my profile for part two!")
+
+    # Part 2 assertions
+    assert p2.startswith("Part two. Picking up right where we left off.")
+    p2_words = len(p2.split())
+    assert p2_words >= 200
+
+    # Total combined story flow intact
+    assert "confrontation that followed" in p2
+
+
 def test_build_caption():
     from src.tiktok_uploader import build_caption
     caption = build_caption("My family excluded me from vacation")

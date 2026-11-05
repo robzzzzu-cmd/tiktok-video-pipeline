@@ -233,6 +233,96 @@ def trim_to_target_words(text: str, min_words: int, max_words: int) -> str:
     return trimmed + "..."
 
 
+def split_story_into_two_parts(
+    title: str,
+    body: str,
+    min_part1_words: int = 300,
+) -> tuple[str, str]:
+    """Splits a story into Part 1 and Part 2 at a natural suspenseful sentence break.
+
+    - Part 1 is targeted to be at least min_part1_words (~2+ minutes of speech @ ~160 WPM).
+    - Part 1 ends with a viral cliffhanger call-to-action: 'Check my profile for part two!'
+    - Part 2 begins with: 'Part two. Picking up right where we left off. '
+    - Returns (part1_narration_text, part2_narration_text).
+    """
+    clean_title = title.strip()
+    if clean_title and not clean_title[-1] in ".!?":
+        clean_title += "."
+
+    body_clean = body.strip()
+    words = body_clean.split()
+    total_words = len(words)
+
+    # Keywords that indicate dramatic tension / peak suspense
+    suspense_keywords = [
+        "suddenly", "until", "then", "that's when", "next thing",
+        "discovered", "realized", "screamed", "saw", "walked in",
+        "shock", "police", "confronted", "message", "truth",
+        "door", "phone", "crying", "yelled", "threatened", "found",
+        "never expected", "couldn't believe", "caught", "secret",
+        "confessed", "pregnant", "cheating", "lawyer", "divorce",
+    ]
+
+    # Split body into sentences preserving terminal punctuation
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", body_clean) if s.strip()]
+    if len(sentences) <= 1:
+        target_split = min_part1_words if total_words > min_part1_words + 100 else max(1, total_words // 2)
+        p1_body = " ".join(words[:target_split])
+        p2_body = " ".join(words[target_split:])
+    else:
+        # Determine target word boundary for Part 1
+        if total_words >= min_part1_words + 120:
+            target_min = min_part1_words
+            target_max = min(total_words - 100, int(total_words * 0.58))
+        else:
+            # If total words is smaller, split near the middle
+            target_min = max(60, int(total_words * 0.45))
+            target_max = max(target_min + 20, int(total_words * 0.60))
+
+        accumulated = 0
+        candidate_splits = []
+        for idx, s in enumerate(sentences[:-1]):
+            w_count = len(s.split())
+            accumulated += w_count
+            if accumulated >= target_min:
+                candidate_splits.append((idx, accumulated, s))
+                if accumulated >= target_max:
+                    break
+
+        best_idx = None
+        if candidate_splits:
+            # 1. Prefer sentence containing a suspense keyword
+            for idx, acc, s in candidate_splits:
+                s_lower = s.lower()
+                if any(kw in s_lower for kw in suspense_keywords):
+                    best_idx = idx
+                    break
+            # 2. Otherwise pick the sentence closest to middle of target range
+            if best_idx is None:
+                ideal_target = (target_min + target_max) // 2
+                best_idx = min(candidate_splits, key=lambda c: abs(c[1] - ideal_target))[0]
+        else:
+            # Fallback to closest sentence
+            accumulated = 0
+            best_idx = 0
+            for idx, s in enumerate(sentences[:-1]):
+                accumulated += len(s.split())
+                best_idx = idx
+                if accumulated >= target_min:
+                    break
+
+        p1_body = " ".join(sentences[: best_idx + 1]).strip()
+        p2_body = " ".join(sentences[best_idx + 1 :]).strip()
+
+    part1_outro = " Check my profile for part two!"
+    part2_intro = "Part two. Picking up right where we left off. "
+
+    part1_narration = f"{clean_title} {p1_body}{part1_outro}".strip()
+    part2_narration = f"{part2_intro}{p2_body}".strip()
+
+    return part1_narration, part2_narration
+
+
 def fetch_from_reddit_json(subreddit: str) -> Optional[Story]:
     """Fetches a trending dramatic story using Reddit public JSON endpoints."""
     # Alternates between hot and top feeds to find the highest-quality viral drama
@@ -606,6 +696,13 @@ def generate_with_gemini(
             narrator_rule = f"The narrator is {prompt_gender.upper()}, tagged explicitly in the opening line as 'I ({gender_tag})' or 'I [{gender_tag}]'."
             format_instruction = "NARRATIVE FORMAT: DO NOT use 'Am I the asshole?' or AITA format. Make it a gripping personal storytime."
 
+        cliffhanger_rule = (
+            "   - At around word 300-350, introduce a dramatic cliffhanger or shocking turning point that divides the narrative into two gripping halves.\n"
+            "   - The second half builds to an explosive climax with satisfying karma, truth, or justice."
+            if config.video_length in ("multipart", "multi_part", "two_part", "twopart")
+            else "   - Satisfying conclusion or punchline."
+        )
+
         prompt = f"""
 You are an award-winning creative storyteller specializing in viral TikTok scripts ({cat_info['name']}).
 
@@ -617,7 +714,7 @@ CRITICAL RULES:
 3. TONE & PACING:
    - High suspense with an intense conversational hook in sentence 1.
    - Escalating tension and interest.
-   - Satisfying conclusion or punchline.
+{cliffhanger_rule}
 4. {format_instruction}
 5. CALL-TO-ACTION: End with a single provocative question that compels viewers to debate in the comments (e.g. 'Am I in the wrong here? Be honest below', 'What would you have done? Let me know in the comments').
 6. NO META REMARKS: Do not include intros like "Here is the story:" or markdown asterisks.
@@ -629,7 +726,7 @@ CRITICAL RULES:
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.85,
-                max_output_tokens=1200,
+                max_output_tokens=1800,
             ),
         )
 
