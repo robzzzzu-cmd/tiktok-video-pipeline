@@ -445,7 +445,7 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
 
     logger.info("Starting headless Playwright upload with %d authenticated cookies...", len(cookies_to_inject))
 
-    # Configure and verify proxy if provided (critical for bypassing cloud datacenter IP blacklists)
+    # Configure and verify proxy if provided; gracefully falls back to direct connection if proxy quota is exhausted
     proxy_settings = None
     if config.tiktok_proxy_server:
         proxy_settings, p_status, p_msg = verify_and_resolve_proxy(
@@ -454,12 +454,13 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             config.tiktok_proxy_password,
         )
         if not proxy_settings:
-            logger.error(
-                "::error::TikTok Proxy Pre-flight check failed (%s). Aborting upload to prevent session revocation from datacenter IP.",
+            logger.warning(
+                "Proxy pre-flight check failed (%s). Falling back to direct connection with full stealth evasions and authenticated cookies...",
                 p_msg,
             )
-            return False, "proxy_failed", f"Proxy pre-flight failed: {p_msg}"
-        logger.info("Configured Playwright with verified proxy: %s", proxy_settings.get("server"))
+            proxy_settings = None
+        else:
+            logger.info("Configured Playwright with verified proxy: %s", proxy_settings.get("server"))
 
     try:
         with sync_playwright() as p:
@@ -581,6 +582,24 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             page.on("response", lambda resp: logger.warning("HTTP %s on %s", resp.status, resp.url[:120]) if resp.status >= 400 and any(k in resp.url for k in ["upload", "tos", "byteoversea", "video", "post", "project", "web"]) else None)
             page.on("requestfailed", lambda req: logger.warning("Playwright request failed: %s | %s", req.url[:120], req.failure))
 
+            # Intercept and abort unnecessary heavy media (video feeds, streams, audio tracks, tracking beacons)
+            # to prevent runaway bandwidth usage and speed up page load.
+            def intercept_route(route):
+                req = route.request
+                url = req.url.lower()
+                # Never block upload actions, authentication endpoints, or core scripts
+                if req.method == "POST" or any(k in url for k in ["upload", "tos", "byteoversea", "post", "project", "creator"]):
+                    return route.continue_()
+                # Abort video stream playback, audio, and font files
+                if req.resource_type in ("media", "font") or any(ext in url for ext in (".mp4", ".m4s", ".ts", ".webm", ".mp3", ".wav", ".woff", ".woff2", ".ttf")):
+                    return route.abort()
+                # Abort third-party tracking beacons and analytics
+                if any(dom in url for dom in ("analytics.tiktok.com", "mon.byteoversea.com", "mcs.tiktok.com")):
+                    return route.abort()
+                return route.continue_()
+
+            page.route("**/*", intercept_route)
+
             # Navigate directly to Creator Studio upload portal (skipping consumer homepage to avoid session conflicts)
             def dismiss_overlays(scopes):
                 for s in scopes:
@@ -690,15 +709,6 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
                 "https://www.tiktok.com/upload?lang=en",
                 "https://www.tiktok.com/tiktokstudio/upload",
             ]
-            # Warm up the browser session on the main explore page so cookies settle,
-            # edge CDN validates the session, and localStorage is naturally hydrated.
-            logger.info("Warming up browser session on tiktok.com explore...")
-            try:
-                page.goto("https://www.tiktok.com/explore", wait_until="commit", timeout=30000)
-                page.wait_for_timeout(3000)
-                safe_screenshot(page, screenshot_dir / "00_session_warmed.png")
-            except Exception as e_warm:
-                logger.debug("Session warm-up notice: %s", e_warm)
 
             file_attached = False
             upload_frame = None
