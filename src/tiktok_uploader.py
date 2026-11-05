@@ -706,18 +706,21 @@ def upload_via_playwright(video_path: Path, title: str) -> bool:
             for target_url in upload_urls:
                 logger.info("Navigating to upload portal: %s...", target_url)
                 nav_ok = False
-                try:
-                    # wait_until="commit" finishes as soon as HTTP 200 response headers arrive,
-                    # avoiding hangs caused by slow background analytics or tracking scripts.
-                    page.goto(target_url, wait_until="commit", timeout=60000)
-                    nav_ok = True
+                for nav_attempt in range(1, 3):
                     try:
-                        page.wait_for_load_state("domcontentloaded", timeout=25000)
-                    except Exception:
-                        logger.info("DOM loading state took longer on %s; proceeding...", target_url)
-                    page.wait_for_timeout(3000)
-                except Exception as e_nav:
-                    logger.warning("Navigation notice for %s: %s", target_url, e_nav)
+                        # wait_until="commit" finishes as soon as HTTP 200 response headers arrive,
+                        # avoiding hangs caused by slow background analytics or tracking scripts.
+                        page.goto(target_url, wait_until="commit", timeout=60000)
+                        nav_ok = True
+                        try:
+                            page.wait_for_load_state("domcontentloaded", timeout=25000)
+                        except Exception:
+                            logger.info("DOM loading state took longer on %s; proceeding...", target_url)
+                        page.wait_for_timeout(3000)
+                        break
+                    except Exception as e_nav:
+                        logger.warning("Navigation notice for %s (attempt %d/2): %s", target_url, nav_attempt, e_nav)
+                        page.wait_for_timeout(4000)
 
                 safe_screenshot(page, screenshot_dir / "01_page_loaded.png")
 
@@ -1153,16 +1156,27 @@ def publish_to_tiktok(video_path: Path, title: str, dry_run: bool = False) -> Di
     # 2. Try Playwright Session Automation (Method B)
     if config.tiktok_session_id or config.tiktok_cookies:
         logger.info("Attempting TikTok Playwright Browser Automation (Method B)...")
-        res_pw = upload_via_playwright(video_path, title)
-        pw_ok = res_pw[0] if isinstance(res_pw, tuple) else bool(res_pw)
-        if pw_ok:
-            return {
-                "status": "success",
-                "method": "playwright_session",
-                "video_path": str(video_path),
-            }
-        pw_reason = res_pw[1] if isinstance(res_pw, tuple) else "playwright_failed"
-        pw_msg = res_pw[2] if isinstance(res_pw, tuple) else "Playwright upload failed"
+        max_attempts = 2
+        for attempt in range(1, max_attempts + 1):
+            if attempt > 1:
+                logger.info("Retrying Playwright upload (attempt %d/%d) after brief pause...", attempt, max_attempts)
+                time.sleep(10)
+
+            res_pw = upload_via_playwright(video_path, title)
+            pw_ok = res_pw[0] if isinstance(res_pw, tuple) else bool(res_pw)
+            if pw_ok:
+                return {
+                    "status": "success",
+                    "method": "playwright_session",
+                    "video_path": str(video_path),
+                }
+            pw_reason = res_pw[1] if isinstance(res_pw, tuple) else "playwright_failed"
+            pw_msg = res_pw[2] if isinstance(res_pw, tuple) else "Playwright upload failed"
+
+            # Do not retry fatal non-network errors
+            if pw_reason in ("no_credentials", "playwright_not_installed", "captcha_challenge"):
+                break
+
         return {
             "status": "failed",
             "method": "playwright_session",
