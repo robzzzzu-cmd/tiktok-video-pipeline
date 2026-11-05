@@ -139,6 +139,12 @@ def test_split_story_into_two_parts():
     assert "confrontation that followed" in p2
 
 
+def test_main_imports():
+    import src.main
+    assert hasattr(src.main, "run_pipeline")
+    assert hasattr(src.main, "parse_arguments")
+
+
 def test_build_caption():
     from src.tiktok_uploader import build_caption
     caption = build_caption("My family excluded me from vacation")

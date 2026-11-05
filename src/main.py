@@ -8,6 +8,7 @@ import json
 import logging
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -52,8 +53,8 @@ def run_pipeline(
         config.video_length = length
         if length in ("multipart", "multi_part", "two_part", "twopart"):
             config.video_length = "multipart"
-            config.target_words_min = 600
-            config.target_words_max = 800
+            config.target_words_min = 750
+            config.target_words_max = 950
         elif length == "short":
             config.target_words_min = 180
             config.target_words_max = 240

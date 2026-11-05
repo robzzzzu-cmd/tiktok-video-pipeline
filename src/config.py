@@ -139,7 +139,7 @@ class PipelineConfig(BaseModel):
         default_factory=lambda: os.getenv("VIDEO_LENGTH", "multipart")  # 'multipart' (Part 1 & Part 2 >=2m each), 'short' (~60-80s), or 'full' (~3.5m)
     )
     min_part_words: int = Field(
-        default_factory=lambda: int(os.getenv("MIN_PART_WORDS", "300"))  # Part 1 target word floor (>=120s @ 150-160 WPM)
+        default_factory=lambda: int(os.getenv("MIN_PART_WORDS", "440"))  # Part 1 target word floor (>=120s @ 200-215 WPM)
     )
     story_source: str = Field(
         default_factory=lambda: os.getenv("STORY_SOURCE", "auto")  # 'auto', 'reddit', 'gemini'
@@ -187,7 +187,7 @@ class PipelineConfig(BaseModel):
         default_factory=lambda: int(
             os.getenv(
                 "TARGET_WORDS_MIN",
-                "600" if os.getenv("VIDEO_LENGTH", "multipart") in ("multipart", "multi_part", "two_part", "twopart")
+                "750" if os.getenv("VIDEO_LENGTH", "multipart") in ("multipart", "multi_part", "two_part", "twopart")
                 else ("180" if os.getenv("VIDEO_LENGTH") == "short" else "450")
             )
         )
@@ -196,7 +196,7 @@ class PipelineConfig(BaseModel):
         default_factory=lambda: int(
             os.getenv(
                 "TARGET_WORDS_MAX",
-                "800" if os.getenv("VIDEO_LENGTH", "multipart") in ("multipart", "multi_part", "two_part", "twopart")
+                "950" if os.getenv("VIDEO_LENGTH", "multipart") in ("multipart", "multi_part", "two_part", "twopart")
                 else ("240" if os.getenv("VIDEO_LENGTH") == "short" else "520")
             )
         )

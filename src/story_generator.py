@@ -236,11 +236,11 @@ def trim_to_target_words(text: str, min_words: int, max_words: int) -> str:
 def split_story_into_two_parts(
     title: str,
     body: str,
-    min_part1_words: int = 300,
+    min_part1_words: int = 440,
 ) -> tuple[str, str]:
     """Splits a story into Part 1 and Part 2 at a natural suspenseful sentence break.
 
-    - Part 1 is targeted to be at least min_part1_words (~2+ minutes of speech @ ~160 WPM).
+    - Part 1 is targeted to be at least min_part1_words (~2+ minutes of speech @ ~200-215 WPM).
     - Part 1 ends with a viral cliffhanger call-to-action: 'Check my profile for part two!'
     - Part 2 begins with: 'Part two. Picking up right where we left off. '
     - Returns (part1_narration_text, part2_narration_text).
@@ -697,7 +697,7 @@ def generate_with_gemini(
             format_instruction = "NARRATIVE FORMAT: DO NOT use 'Am I the asshole?' or AITA format. Make it a gripping personal storytime."
 
         cliffhanger_rule = (
-            "   - At around word 300-350, introduce a dramatic cliffhanger or shocking turning point that divides the narrative into two gripping halves.\n"
+            "   - At around word 440-480, introduce a dramatic cliffhanger or shocking turning point that divides the narrative into two gripping halves.\n"
             "   - The second half builds to an explosive climax with satisfying karma, truth, or justice."
             if config.video_length in ("multipart", "multi_part", "two_part", "twopart")
             else "   - Satisfying conclusion or punchline."
@@ -726,7 +726,7 @@ CRITICAL RULES:
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.85,
-                max_output_tokens=1800,
+                max_output_tokens=2200,
             ),
         )
 
