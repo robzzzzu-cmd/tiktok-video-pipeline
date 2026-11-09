@@ -83,11 +83,11 @@ def clean_text_for_narration(text: str, category: str = "auto") -> str:
 
     # Expand common Reddit acronyms
     for pattern, replacement in ACRONYM_MAP.items():
-        if category in ("love", "inheritance", "entitled", "revenge", "confession", "workplace") and pattern in (r"\bAITA\b", r"\bWIBTA\b"):
+        if category in ("love", "inheritance", "entitled", "revenge", "confession") and pattern in (r"\bAITA\b", r"\bWIBTA\b"):
             text = re.sub(pattern, "in the wrong", text, flags=re.IGNORECASE)
-        elif category in ("love", "inheritance", "entitled", "revenge", "confession", "workplace") and pattern == r"\bNTA\b":
+        elif category in ("love", "inheritance", "entitled", "revenge", "confession") and pattern == r"\bNTA\b":
             text = re.sub(pattern, "in the right", text, flags=re.IGNORECASE)
-        elif category in ("love", "inheritance", "entitled", "revenge", "confession", "workplace") and pattern in (r"\bYTA\b", r"\bESH\b"):
+        elif category in ("love", "inheritance", "entitled", "revenge", "confession") and pattern in (r"\bYTA\b", r"\bESH\b"):
             text = re.sub(pattern, "in the wrong", text, flags=re.IGNORECASE)
         else:
             text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
@@ -100,7 +100,7 @@ def clean_text_for_narration(text: str, category: str = "auto") -> str:
         flags=re.IGNORECASE,
     )
 
-    if category in ("love", "inheritance", "entitled", "revenge", "confession", "workplace"):
+    if category in ("love", "inheritance", "entitled", "revenge", "confession"):
         # Remove any lingering "Am I the asshole" phrases anywhere in the narrative
         text = re.sub(r"\b(?:Am I the asshole|would I be the asshole)\b\??", "am I in the wrong", text, flags=re.IGNORECASE)
         text = re.sub(r"\b(?:an asshole|the asshole)\b", "in the wrong", text, flags=re.IGNORECASE)
@@ -453,9 +453,15 @@ def fetch_from_reddit_praw(subreddit: str) -> Optional[Story]:
 
 
 STORY_CATEGORIES = {
+    "aitah": {
+        "name": "Classic Am I The Asshole",
+        "subreddits": ["AITAH", "AmItheAsshole"],
+        "keywords": ["aita", "asshole", "am i the asshole", "wibta"],
+        "gemini_theme": "A classic moral dilemma where the narrator made a controversial but justified decision, dividing their family, starting with 'AITA for...'.",
+    },
     "love": {
-        "name": "Love & Relationships",
-        "subreddits": ["relationship_advice", "dating_advice", "confession", "TrueOffMyChest", "survivinginfidelity"],
+        "name": "Love, Betrayal & Secrets",
+        "subreddits": ["relationship_advice", "confession", "TrueOffMyChest", "survivinginfidelity", "dating_advice"],
         "keywords": [
             "husband", "wife", "boyfriend", "girlfriend", "fiancé", "fiancée", "cheating",
             "dating", "marriage", "wedding", "in love", "proposal", "burner phone", "gym bag",
@@ -463,15 +469,14 @@ STORY_CATEGORIES = {
         ],
         "gemini_theme": "A high-stakes love, dating, or relationship story: uncovering a secret about a partner (burner phone in gym bag, private investigator uncovering secret lifestyle, surprise dowry demand at rehearsal dinner, or wedding betrayal).",
     },
-    "inheritance": {
-        "name": "Family Inheritance & Wills",
-        "subreddits": ["familydrama", "EntitledPeople", "TrueOffMyChest", "pettyrevenge", "legaladvice"],
+    "revenge": {
+        "name": "Sweet & Petty Revenge",
+        "subreddits": ["pettyrevenge", "ProRevenge", "MaliciousCompliance", "tifu"],
         "keywords": [
-            "inheritance", "will", "estate", "passed away", "trust fund", "house", "parents left",
-            "property", "heir", "executor", "vacation fund", "sister's kids", "land", "cottage",
-            "tax assessor", "deed", "probate", "selling land"
+            "revenge", "karma", "malicious compliance", "fired", "audit", "payback",
+            "landlord", "tenant", "boss", "demolish", "property line", "survey", "commission"
         ],
-        "gemini_theme": "A dramatic family inheritance battle: family vacation fund theft ($8,000 sister demand and father selling land), college trust fund drama, grandmother's estate tax dispute, or greedy relatives demanding the narrator's inheritance.",
+        "gemini_theme": "A satisfying revenge or malicious compliance story: corporate boss attempting to steal commission getting caught by an audit, or neighbor property dispute resulting in demolishing an encroachment.",
     },
     "entitled": {
         "name": "Entitled People & Roommate Karma",
@@ -483,14 +488,15 @@ STORY_CATEGORIES = {
         ],
         "gemini_theme": "An entitled person karma story: independent software contractor fired after refusing to hand over proprietary logistics source code (distribution network freeze), entitled neighbor towing classic car, roommate stealing a car, or landlord keeping a deposit.",
     },
-    "revenge": {
-        "name": "Sweet & Petty Revenge",
-        "subreddits": ["pettyrevenge", "ProRevenge", "MaliciousCompliance", "tifu"],
+    "inheritance": {
+        "name": "Family Inheritance & Wills",
+        "subreddits": ["familydrama", "EntitledPeople", "TrueOffMyChest", "pettyrevenge", "legaladvice"],
         "keywords": [
-            "revenge", "karma", "malicious compliance", "fired", "audit", "payback",
-            "landlord", "tenant", "boss", "demolish", "property line", "survey", "commission"
+            "inheritance", "will", "estate", "passed away", "trust fund", "house", "parents left",
+            "property", "heir", "executor", "vacation fund", "sister's kids", "land", "cottage",
+            "tax assessor", "deed", "probate", "selling land"
         ],
-        "gemini_theme": "A satisfying revenge or malicious compliance story: corporate boss attempting to steal commission getting caught by an audit, or neighbor property dispute resulting in demolishing an encroachment.",
+        "gemini_theme": "A dramatic family inheritance battle: family vacation fund theft ($8,000 sister demand and father selling land), college trust fund drama, grandmother's estate tax dispute, or greedy relatives demanding the narrator's inheritance.",
     },
     "confession": {
         "name": "Shocking Confessions & Secrets",
@@ -500,57 +506,6 @@ STORY_CATEGORIES = {
             "discovered", "truth", "swapped", "whistleblower", "chemicals", "culvert"
         ],
         "gemini_theme": "A shocking confession or dark secret: commercial DNA test revealing being switched at birth, or a safety inspector blowing the whistle on illegal toxic dumping.",
-    },
-    "aitah": {
-        "name": "Classic Am I The Asshole",
-        "subreddits": ["AITAH", "AmItheAsshole"],
-        "keywords": ["aita", "asshole", "am i the asshole", "wibta"],
-        "gemini_theme": "A classic moral dilemma where the narrator made a controversial but justified decision, dividing their family, starting with 'AITA for...'.",
-    },
-    "facts": {
-        "name": "Mind-Blowing Facts & Disturbing Curiosities",
-        "subreddits": ["todayilearned", "damnthatsinteresting", "AskReddit", "oddlyterrifying"],
-        "keywords": [
-            "fact", "learned", "science", "ocean", "space", "brain", "body", "historical",
-            "psychological", "creepy", "discovered", "theory", "phenomenon", "ancient", "mystery"
-        ],
-        "gemini_theme": "A rapid-fire countdown of 4 to 5 mind-blowing, unsettling, or unbelievable real-world facts (deep ocean mysteries, disturbing psychology, bizarre medical anomalies, or surreal space phenomena) that leave the viewer shocked. Fast-paced, intense hooks, conversational delivery.",
-    },
-    "scary": {
-        "name": "True Horror, Paranormal & Glitch in the Matrix",
-        "subreddits": ["nosleep", "Glitch_in_the_Matrix", "LetsNotMeet", "scarystories", "Ghoststories"],
-        "keywords": [
-            "creepy", "scary", "woods", "cabin", "night", "stalker", "glitch", "mimic",
-            "footsteps", "unexplained", "watcher", "window", "shadow", "voice", "horror"
-        ],
-        "gemini_theme": "A spine-chilling, atmospheric true-style horror or glitch-in-the-matrix encounter: working the graveyard night shift, living isolated in a cabin hearing one's own voice outside, or an impossible glitch in reality that cannot be rationalized. Escalating dread with a lingering terrifying ending.",
-    },
-    "showerthoughts": {
-        "name": "Mind-Bending Thoughts & Deep Epiphanies",
-        "subreddits": ["Showerthoughts", "AskReddit", "Existentialism"],
-        "keywords": [
-            "thought", "realize", "perspective", "brain", "time", "humanity", "simulation",
-            "universe", "existential", "conscious", "paradox", "reality"
-        ],
-        "gemini_theme": "A series of 4 mind-bending shower thoughts, philosophical paradoxes, and perspective-shifting epiphanies that break the viewer's brain and make them question everyday life and reality.",
-    },
-    "wild_history": {
-        "name": "Unbelievable Historical Events & Survival Stories",
-        "subreddits": ["HistoryAnecdotes", "TrueCrime", "UnresolvedMysteries", "nonononoyes"],
-        "keywords": [
-            "history", "survived", "heist", "impossible", "miracle", "war", "island",
-            "coincidence", "pilot", "escape", "legend", "century", "expedition"
-        ],
-        "gemini_theme": "An insane, unbelievable true historical survival story or audacious heist that sounds like fiction but actually happened (e.g. an impossible wilderness survival miracle, wild military coincidence, or genius trickery).",
-    },
-    "workplace": {
-        "name": "Unhinged Customers & Workplace Chaos",
-        "subreddits": ["TalesFromRetail", "IDontWorkHereLady", "talesfromtechsupport", "pettyrevenge"],
-        "keywords": [
-            "manager", "customer", "karen", "store", "cashier", "fired", "demanded",
-            "police", "shift", "retail", "refund", "receipt", "corporate"
-        ],
-        "gemini_theme": "A wildly entertaining workplace or retail encounter where an unhinged, entitled customer tries to get an employee fired, only to face instant public embarrassment or police karma.",
     },
 }
 
@@ -674,27 +629,12 @@ def generate_with_gemini(
         prompt_gender = gender_override or random.choice(["male", "female"])
         gender_tag = "26F" if prompt_gender == "female" else "28M"
 
-        if cat_key == "facts":
-            narrator_rule = f"The voice narrator is {prompt_gender.upper()} delivering a rapid-fire, highly engaging curiosity presentation to the viewer."
-            format_instruction = "NARRATIVE FORMAT: Title should be a high-engagement curiosity hook (e.g. 'Disturbing psychological facts that will keep you awake tonight'). Body should deliver 4 captivating facts conversationally, building in suspense."
-        elif cat_key == "showerthoughts":
-            narrator_rule = f"The voice narrator is {prompt_gender.upper()} presenting mind-bending concepts directly to the viewer."
-            format_instruction = "NARRATIVE FORMAT: Title should be a brain-breaking epiphany hook (e.g. 'Shower thoughts that break your brain'). Body should deliver 4 deep, perspective-shifting epiphanies."
-        elif cat_key == "scary":
-            narrator_rule = f"The narrator is {prompt_gender.upper()}, tagged in opening line as 'I ({gender_tag})' or 'I [{gender_tag}]'."
-            format_instruction = "NARRATIVE FORMAT: Title should be a chilling encounter hook. Body should be an atmospheric true horror encounter with escalating dread and a terrifying conclusion."
-        elif cat_key == "wild_history":
-            narrator_rule = f"The narrator is {prompt_gender.upper()} recounting an unbelievable true historical event or survival tale."
-            format_instruction = "NARRATIVE FORMAT: Title should be an unbelievable history hook. Body should tell an extraordinary true survival or historical feat."
-        elif cat_key == "workplace":
-            narrator_rule = f"The narrator is {prompt_gender.upper()}, tagged in opening line as 'I ({gender_tag})' or 'I [{gender_tag}]'."
-            format_instruction = "NARRATIVE FORMAT: Title should be an unhinged customer/manager hook. Body should describe an outrageous workplace encounter with epic karma."
-        elif cat_key == "aitah":
+        if cat_key == "aitah":
             narrator_rule = f"The narrator is {prompt_gender.upper()}, tagged explicitly in the opening line as 'I ({gender_tag})' or 'I [{gender_tag}]'."
             format_instruction = "NARRATIVE FORMAT: Title should start with 'AITA for...' or 'Am I the asshole for...'"
         else:
             narrator_rule = f"The narrator is {prompt_gender.upper()}, tagged explicitly in the opening line as 'I ({gender_tag})' or 'I [{gender_tag}]'."
-            format_instruction = "NARRATIVE FORMAT: DO NOT use 'Am I the asshole?' or AITA format. Make it a gripping personal storytime."
+            format_instruction = "NARRATIVE FORMAT: DO NOT use 'Am I the asshole?' or AITA format. Make it a gripping personal drama storytime."
 
         cliffhanger_rule = (
             "   - At around word 440-480, introduce a dramatic cliffhanger or shocking turning point that divides the narrative into two gripping halves.\n"
@@ -1383,18 +1323,13 @@ def get_story(
 ) -> Story:
     """Master entry point to retrieve or generate a story following the specified strategy.
 
-    Supports diverse viral categories:
-    - 'love': Love & Relationship drama (cheating, secret phones, wedding confessions)
-    - 'inheritance': Family inheritance & estate battles (wills, trusts, vacation drama)
-    - 'entitled': Entitled people & roommate karma (logistics systems, towing cars, deposit payback)
-    - 'revenge': Sweet & petty revenge, corporate audits, property encroachments
-    - 'confession': Shocking confessions, birth switches, whistleblower disclosures
-    - 'aitah': Classic AITAH moral conflicts
-    - 'facts': Mind-blowing real-world facts & dark curiosities (science, psychology, ocean)
-    - 'scary': True horror, paranormal & glitch in the matrix encounters
-    - 'showerthoughts': Mind-bending shower thoughts & brain-breaking epiphanies
-    - 'wild_history': Insane true survival stories & historical feats
-    - 'workplace': Unhinged customer Karen encounters & workplace karma
+    Supports exclusive viral drama categories:
+    - 'aitah': Classic AITAH moral conflicts and family division
+    - 'love': Love, relationship betrayal, cheating, secret burner phones, wedding revelations
+    - 'revenge': Sweet & petty revenge, malicious compliance, corporate/neighbor payback
+    - 'entitled': Entitled people, toxic roommates, boundary-crossing relatives
+    - 'inheritance': Family inheritance battles, will contests, greedy siblings
+    - 'confession': Shocking dark confessions, secret paternity, whistleblower disclosures
 
     Args:
         source: 'auto', 'reddit', or 'gemini'.

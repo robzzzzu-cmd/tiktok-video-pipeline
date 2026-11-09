@@ -426,11 +426,10 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--category",
         choices=[
-            "auto", "love", "inheritance", "entitled", "revenge", "confession",
-            "aitah", "facts", "scary", "showerthoughts", "wild_history", "workplace"
+            "auto", "aitah", "love", "revenge", "entitled", "inheritance", "confession"
         ],
         default="auto",
-        help="Story category: love, inheritance, entitled, revenge, confession, aitah, facts, scary, showerthoughts, wild_history, workplace.",
+        help="Story category: aitah, love, revenge, entitled, inheritance, confession (focused exclusively on viral drama).",
     )
     parser.add_argument(
         "--bg-style",

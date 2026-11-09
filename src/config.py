@@ -145,42 +145,31 @@ class PipelineConfig(BaseModel):
         default_factory=lambda: os.getenv("STORY_SOURCE", "auto")  # 'auto', 'reddit', 'gemini'
     )
     story_category: str = Field(
-        default_factory=lambda: os.getenv("STORY_CATEGORY", "auto")  # 'auto', 'love', 'inheritance', 'entitled', 'revenge', 'confession', 'aitah', 'facts', 'scary', 'showerthoughts', 'wild_history', 'workplace'
+        default_factory=lambda: os.getenv("STORY_CATEGORY", "auto")  # 'auto', 'aitah', 'love', 'revenge', 'entitled', 'inheritance', 'confession'
     )
     subreddits: List[str] = Field(
         default_factory=lambda: [
+            "AITAH",
+            "relationship_advice",
             "TrueOffMyChest",
-            "EntitledPeople",
             "pettyrevenge",
             "confession",
-            "relationship_advice",
+            "EntitledPeople",
             "familydrama",
             "tifu",
             "offmychest",
             "MaliciousCompliance",
-            "AITAH",
-            "todayilearned",
-            "damnthatsinteresting",
-            "nosleep",
-            "Glitch_in_the_Matrix",
-            "Showerthoughts",
-            "HistoryAnecdotes",
-            "TalesFromRetail",
+            "AmItheAsshole",
         ]
     )
     category_colors: dict = Field(
         default_factory=lambda: {
-            "love": "&H0000FFFF&",           # Yellow
-            "inheritance": "&H0000D7FF&",    # Gold
-            "entitled": "&H0020A5FF&",       # Amber Orange
+            "aitah": "&H0000FFFF&",          # High-contrast TikTok Yellow
+            "love": "&H0020A5FF&",           # Amber Coral
             "revenge": "&H0032CD32&",        # Lime Green
+            "entitled": "&H00008CFF&",       # Dark Orange
+            "inheritance": "&H0000D7FF&",    # Gold
             "confession": "&H00D020FF&",     # Magenta
-            "aitah": "&H0000FFFF&",          # Yellow
-            "facts": "&H00FFFF00&",          # Cyan
-            "scary": "&H000000FF&",          # Crimson Red
-            "showerthoughts": "&H00FFBF00&", # Sky Blue
-            "wild_history": "&H00008CFF&",   # Dark Orange
-            "workplace": "&H0000E5FF&",      # Amber
         }
     )
     target_words_min: int = Field(

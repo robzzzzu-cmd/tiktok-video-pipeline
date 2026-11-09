@@ -25,23 +25,18 @@ on:
           - male
           - female
       category:
-        description: 'Story category (auto, love, inheritance, entitled, revenge, confession, aitah, facts, scary, showerthoughts, wild_history, or workplace)'
+        description: 'Story category (auto, aitah, love, revenge, entitled, inheritance, confession - viral drama focus)'
         required: true
         default: 'auto'
         type: choice
         options:
           - auto
-          - love
-          - inheritance
-          - entitled
-          - revenge
-          - confession
           - aitah
-          - facts
-          - scary
-          - showerthoughts
-          - wild_history
-          - workplace
+          - love
+          - revenge
+          - entitled
+          - inheritance
+          - confession
       bg_style:
         description: 'Background visual style (auto, minecraft, subway_surfers, gta, satisfying, or beamng)'
         required: true

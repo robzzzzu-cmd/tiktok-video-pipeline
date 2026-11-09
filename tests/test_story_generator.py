@@ -67,10 +67,15 @@ def test_curated_fallback_stories():
     assert story_m.title != ""
 
 
+def test_story_categories_drama_focus():
+    from src.story_generator import STORY_CATEGORIES
+    expected = {"aitah", "love", "revenge", "entitled", "inheritance", "confession"}
+    assert set(STORY_CATEGORIES.keys()) == expected
+
+
 def test_curated_fallback_all_categories():
     categories = [
-        "love", "inheritance", "entitled", "revenge", "confession",
-        "aitah", "facts", "scary", "showerthoughts", "wild_history", "workplace"
+        "love", "inheritance", "entitled", "revenge", "confession", "aitah"
     ]
     for cat in categories:
         story_f = get_curated_fallback_story("female", category=cat)
