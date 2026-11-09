@@ -16,6 +16,7 @@ from src.config import config
 from src.story_generator import get_story, split_story_into_two_parts
 from src.tts_engine import generate_voiceover
 from src.subtitles import generate_ass_subtitles
+from src.reddit_card import generate_reddit_card
 from src.video_composer import (
     download_background_clip,
     download_background_music,
@@ -151,7 +152,26 @@ def run_pipeline(
                     len(tts_result.word_timings),
                 )
 
-                logger.info("[Part %d - Step 3/5] Generating TikTok subtitles...", p_num)
+                # Calculate authentic Reddit Card visual hook duration based on title/intro narration
+                if p_num == 1:
+                    title_words = len(story.title.split())
+                    card_dur = tts_result.word_timings[title_words - 1].end if (tts_result.word_timings and len(tts_result.word_timings) >= title_words) else 3.6
+                else:
+                    intro_words = 8  # 'Part two. Picking up right where we left off.'
+                    card_dur = tts_result.word_timings[intro_words - 1].end if (tts_result.word_timings and len(tts_result.word_timings) >= intro_words) else 3.2
+                card_dur = max(2.5, min(5.5, float(card_dur)))
+
+                logger.info("[Part %d - Step 2.5/5] Generating Dark-Mode Reddit Card hook graphic...", p_num)
+                card_path = temp_run_dir / f"reddit_card_{timestamp_str}_part{p_num}.png"
+                generate_reddit_card(
+                    title=story.title,
+                    subreddit=story.subreddit or f"r/{matched_cat}",
+                    part_num=p_num,
+                    category=matched_cat,
+                    output_path=card_path,
+                )
+
+                logger.info("[Part %d - Step 3/5] Generating TikTok subtitles (synchronized after Reddit Card fade)...", p_num)
                 ass_path = temp_run_dir / f"captions_{timestamp_str}_part{p_num}.ass"
                 generate_ass_subtitles(
                     word_timings=tts_result.word_timings,
@@ -159,6 +179,8 @@ def run_pipeline(
                     highlight_color=highlight_color,
                     story_title=p_title,
                     category_tag=p_badge,
+                    skip_until_seconds=card_dur,
+                    show_header_badge=False,
                 )
                 logger.info("Part %d subtitles written to %s", p_num, ass_path)
 
@@ -170,7 +192,7 @@ def run_pipeline(
                     bg_style=bg_style,
                 )
 
-                logger.info("[Part %d - Step 5/5] Compositing vertical 1080x1920 video with ffmpeg...", p_num)
+                logger.info("[Part %d - Step 5/5] Compositing vertical 1080x1920 video with Reddit Card hook...", p_num)
                 part_video_path = config.output_dir / f"tiktok_video_{timestamp_str}_part{p_num}.mp4"
                 render_final_video(
                     background_video=raw_bg_path,
@@ -179,6 +201,8 @@ def run_pipeline(
                     output_video=part_video_path,
                     duration=tts_result.duration_seconds,
                     background_music=bg_music_path,
+                    reddit_card_image=card_path,
+                    reddit_card_duration=card_dur,
                 )
                 logger.info("Part %d video rendered successfully: %s", p_num, part_video_path)
 
@@ -272,6 +296,20 @@ def run_pipeline(
                 len(tts_result.word_timings),
             )
 
+            title_words = len(story.title.split())
+            card_dur = tts_result.word_timings[title_words - 1].end if (tts_result.word_timings and len(tts_result.word_timings) >= title_words) else 3.6
+            card_dur = max(2.5, min(5.5, float(card_dur)))
+
+            logger.info("[Step 2.5/5] Generating Dark-Mode Reddit Card hook graphic...")
+            card_path = temp_run_dir / f"reddit_card_{timestamp_str}.png"
+            generate_reddit_card(
+                title=story.title,
+                subreddit=story.subreddit or f"r/{matched_cat}",
+                part_num=1,
+                category=matched_cat,
+                output_path=card_path,
+            )
+
             logger.info("[Step 3/5] Generating TikTok animated word-highlight subtitles...")
             ass_path = temp_run_dir / f"captions_{timestamp_str}.ass"
             generate_ass_subtitles(
@@ -280,6 +318,8 @@ def run_pipeline(
                 highlight_color=highlight_color,
                 story_title=story.title,
                 category_tag=category_label,
+                skip_until_seconds=card_dur,
+                show_header_badge=False,
             )
             logger.info("Subtitles written to %s (highlight color: %s)", ass_path, highlight_color)
 
@@ -291,7 +331,7 @@ def run_pipeline(
                 bg_style=bg_style,
             )
 
-            logger.info("[Step 5/5] Compositing final vertical 1080x1920 video with ffmpeg...")
+            logger.info("[Step 5/5] Compositing final vertical 1080x1920 video with Reddit Card hook...")
             render_final_video(
                 background_video=raw_bg_path,
                 voiceover_audio=tts_result.audio_path,
@@ -299,6 +339,8 @@ def run_pipeline(
                 output_video=final_video_path,
                 duration=tts_result.duration_seconds,
                 background_music=bg_music_path,
+                reddit_card_image=card_path,
+                reddit_card_duration=card_dur,
             )
             logger.info("Final video successfully rendered: %s", final_video_path)
 

@@ -110,11 +110,14 @@ def generate_ass_subtitles(
     shadow: int = config.shadow_depth,
     story_title: Optional[str] = None,
     category_tag: Optional[str] = None,
+    skip_until_seconds: float = 0.0,
+    show_header_badge: bool = True,
 ) -> Path:
     """Generates an Advanced SubStation Alpha (.ass) subtitle file with word-by-word highlights.
 
     Subtitles are centered directly in the middle of the screen (Alignment 5) for high-engagement viewing.
-    Optionally renders an eye-catching viral hook header badge for the opening seconds.
+    Optionally renders an eye-catching viral hook header badge for the opening seconds, or delays subtitle
+    appearance until a Reddit Card hook graphic fades out.
     """
     output_ass_path.parent.mkdir(parents=True, exist_ok=True)
     chunks = build_chunks(word_timings, max_words=3, max_chars=20)
@@ -139,8 +142,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     dialogue_lines: List[str] = []
 
-    # Optional viral hook header for opening seconds
-    if story_title:
+    # Optional viral hook header for opening seconds (used only if Reddit Card image is not active)
+    if story_title and show_header_badge:
         if category_tag:
             tag_str = f"[ {category_tag} ]" if category_tag.startswith("r/") else f"[ {category_tag.upper()} ]"
         else:
@@ -165,12 +168,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         dialogue_lines.append(hook_line)
 
     for chunk in chunks:
+        if skip_until_seconds > 0.0 and chunk.end <= skip_until_seconds:
+            continue
+
         num_words = len(chunk.words)
         if num_words == 0:
             continue
 
         for active_idx, active_word in enumerate(chunk.words):
             sub_start = active_word.start
+            if skip_until_seconds > 0.0 and sub_start < skip_until_seconds:
+                sub_start = skip_until_seconds
 
             # The sub-interval ends when the next word starts, or when the chunk ends
             if active_idx + 1 < num_words:

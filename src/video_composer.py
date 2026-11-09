@@ -513,11 +513,14 @@ def render_final_video(
     output_video: Path,
     duration: float,
     background_music: Optional[Path] = None,
+    reddit_card_image: Optional[Path] = None,
+    reddit_card_duration: float = 3.6,
 ) -> Path:
     """Composites the final vertical TikTok video using ffmpeg.
 
     Applies:
     - 9:16 vertical crop & scale: 1080x1920, 30fps
+    - Optional authentic Dark-Mode Reddit Card graphic hook (fading out smoothly at title end)
     - Burn-in ASS dynamic subtitles centered in the middle of the screen
     - Mixes TTS voiceover as primary audio + quiet background music ducked at -26dB
     - Completely removes all sounds from the background video
@@ -534,52 +537,66 @@ def render_final_video(
     escaped_subtitles = escape_ffmpeg_filter_path(subtitles_ass)
     escaped_fontsdir = escape_ffmpeg_filter_path(config.fonts_dir)
 
-    # Video filter chain: scale -> crop -> 30fps -> subtitles
-    video_filter = (
+    input_args = [
+        "-y",
+        "-stream_loop", "-1",
+        "-i", str(background_video),
+        "-i", str(voiceover_audio),
+    ]
+
+    next_idx = 2
+    card_idx = None
+    if reddit_card_image and Path(reddit_card_image).exists():
+        card_idx = next_idx
+        input_args.extend(["-i", str(reddit_card_image)])
+        next_idx += 1
+
+    music_idx = None
+    if background_music and Path(background_music).exists():
+        music_idx = next_idx
+        input_args.extend(["-stream_loop", "-1", "-i", str(background_music)])
+        next_idx += 1
+
+    # Base background scaling and cropping to vertical 1080x1920
+    base_bg = (
         f"[0:v]scale={config.video_width}:{config.video_height}:"
         f"force_original_aspect_ratio=increase,"
         f"crop={config.video_width}:{config.video_height}:"
         f"(in_w-{config.video_width})/2:(in_h-{config.video_height})/2,"
-        f"fps={config.video_fps},"
-        f"subtitles='{escaped_subtitles}':fontsdir='{escaped_fontsdir}'[v]"
+        f"fps={config.video_fps}"
     )
 
-    has_music = bool(background_music and background_music.exists())
-    if has_music:
-        # Audio filter: duck quiet background music, mix with full voiceover
-        # Note: background video sound [0:a] is completely removed/discarded!
-        # normalize=0 ensures voice stays at 100% full volume and music is mixed at exact target level
+    # Video filter chain with optional Reddit Card overlay
+    if card_idx is not None:
+        card_dur = max(2.0, min(7.0, float(reddit_card_duration)))
+        fade_d = 0.45
+        fade_st = max(0.1, card_dur - fade_d)
+        video_filter = (
+            f"{base_bg}[bg];"
+            f"[{card_idx}:v]format=rgba,fade=t=out:st={fade_st:.2f}:d={fade_d:.2f}:alpha=1[card_faded];"
+            f"[bg][card_faded]overlay=0:0:enable='between(t,0,{card_dur:.2f})'[v_card];"
+            f"[v_card]subtitles='{escaped_subtitles}':fontsdir='{escaped_fontsdir}'[v]"
+        )
+    else:
+        video_filter = (
+            f"{base_bg}[bg];"
+            f"[bg]subtitles='{escaped_subtitles}':fontsdir='{escaped_fontsdir}'[v]"
+        )
+
+    # Audio filter chain
+    if music_idx is not None:
         audio_filter = (
-            f"[2:a]volume={config.bg_music_volume_db}[bg_music];"
+            f"[{music_idx}:a]volume={config.bg_music_volume_db}[bg_music];"
             f"[1:a]volume=1.0[voice];"
             f"[voice][bg_music]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]"
         )
         filter_complex = f"{video_filter};{audio_filter}"
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-stream_loop", "-1",
-            "-i", str(background_video),
-            "-i", str(voiceover_audio),
-            "-stream_loop", "-1",
-            "-i", str(background_music),
-            "-filter_complex", filter_complex,
-            "-map", "[v]",
-            "-map", "[a]",
-        ]
+        map_args = ["-map", "[v]", "-map", "[a]"]
     else:
-        # Clean voiceover audio only (allows adding native TikTok trending sound in-app)
-        filter_complex = f"{video_filter}"
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-stream_loop", "-1",
-            "-i", str(background_video),
-            "-i", str(voiceover_audio),
-            "-filter_complex", filter_complex,
-            "-map", "[v]",
-            "-map", "1:a",
-        ]
+        filter_complex = video_filter
+        map_args = ["-map", "[v]", "-map", "1:a"]
+
+    cmd = ["ffmpeg"] + input_args + ["-filter_complex", filter_complex] + map_args
 
     cmd.extend([
         "-c:v", "libx264",
