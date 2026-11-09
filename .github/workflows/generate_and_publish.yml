@@ -2,8 +2,8 @@ name: Generate and Publish TikTok Video
 
 on:
   schedule:
-    # Daily at 14:00 UTC
-    - cron: '0 14 * * *'
+    # Daily at 14:23 UTC (avoiding top-of-the-hour :00 congestion which causes GitHub Actions cron drops/delays)
+    - cron: '23 14 * * *'
   workflow_dispatch:
     inputs:
       source:
